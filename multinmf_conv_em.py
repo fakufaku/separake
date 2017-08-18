@@ -95,7 +95,7 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
     if SimAnneal_flag > 0:
         Sigma_b_anneal = np.zeros((F, iter_num))
         for iter in range(iter_num):
-            Sigma_b_anneal[:, iter] = ((np.sqrt(Sigma_b0) * (iter_num - iter) + np.ones(F, 1) * np.sqrt(final_ann_noise_var) * iter) / iter_num) ** 2
+            Sigma_b_anneal[:, iter] = ((np.sqrt(Sigma_b0) * (iter_num - iter) + np.ones(F) * np.sqrt(final_ann_noise_var) * iter) / iter_num) ** 2
 
     # MAIN LOOP
     for iter in range(iter_num):
@@ -121,35 +121,35 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
 
             if SimAnneal_flag == 2:  # with noise injection
                 Noise = np.random.randn(F, N, 2) + 1j * np.random.randn(F, N, 2)  # complex noise
-                Noise[:,:,1] *= np.dot(np.sqrt(Sigma_b / 2) * np.ones((1, N)))))
-                Noise[:,:,2] *= np.dot(np.sqrt(Sigma_b / 2) * np.ones((1, N)))))
+                Noise[:,:,0] *= np.outer(np.sqrt(Sigma_b / 2), np.ones(N))
+                Noise[:,:,1] *= np.outer(np.sqrt(Sigma_b / 2), np.ones(N))
 
                 Xb = X + Noise
 
         # compute the Sigma_x matrix
+        Sigma_x[:,:,0,0] = np.dot(Sigma_b, O)
+        Sigma_x[:,:,0,1] = 0
+        Sigma_x[:,:,1,0] = 0
         Sigma_x[:,:,1,1] = np.dot(Sigma_b, O)
-        Sigma_x[:,:,1,2] = 0
-        Sigma_x[:,:,2,1] = 0
-        Sigma_x[:,:,2,2] = np.dot(Sigma_b, O)
         for j in range(J):
+            Sigma_x[:, :, 0, 0] += np.dot(np.abs(A[:,0,j]) ** 2, O) * sigma_ss[:,:,j]
+            Sigma_x[:, :, 0, 1] += np.dot((A[:,0,j] * np.conj(A[:,1,j])), O) * sigma_ss[:, :, j]
+            Sigma_x[:, :, 1, 0] = np.conj(Sigma_x[:,:,0,1])
             Sigma_x[:, :, 1, 1] += np.dot(np.abs(A[:,1,j]) ** 2, O) * sigma_ss[:,:,j]
-            Sigma_x[:, :, 1, 2] += np.dot((A[:,1,j] * np.conj(A[:,2,j])), O) * sigma_ss[:, :, j]
-            Sigma_x[:, :, 2, 1] = np.conj(Sigma_x[:,:,1,2])
-            Sigma_x[:, :, 2, 2] += np.dot(np.abs(A[:,2,j]) ** 2, O) * sigma_ss[:,:,j]
 
         # compute the inverse of Sigma_x matrix
-        Det_Sigma_x = Sigma_x[:,:,1,1] * Sigma_x[:, :, 2, 2] - np.abs(Sigma_x[:, :, 1, 2]) ** 2
-        Inv_Sigma_x[:,:,1,1] = Sigma_x[:,:,2,2] / Det_Sigma_x
-        Inv_Sigma_x[:,:,1,2] = -Sigma_x[:,:,1,2] / Det_Sigma_x
-        Inv_Sigma_x[:,:,2,1] = np.conj(Inv_Sigma_x[:,:,1,2])
-        Inv_Sigma_x[:,:,2,2] = Sigma_x[:,:,1,1] / Det_Sigma_x
+        Det_Sigma_x = Sigma_x[:,:,0,0] * Sigma_x[:,:,1,1] - np.abs(Sigma_x[:, :,0,1]) ** 2
+        Inv_Sigma_x[:,:,0,0] = Sigma_x[:,:,0,0] / Det_Sigma_x
+        Inv_Sigma_x[:,:,0,1] = -Sigma_x[:,:,0,1] / Det_Sigma_x
+        Inv_Sigma_x[:,:,1,0] = np.conj(Inv_Sigma_x[:,:,0,1])
+        Inv_Sigma_x[:,:,1,1] = Sigma_x[:,:,0,0] / Det_Sigma_x
 
         # compute log-likelihood
         log_like = - np.sum( 
                         np.log(Det_Sigma_x * np.pi)
+                        + Inv_Sigma_x[:,:,0,0] * np.abs(Xb[:,:,0]) ** 2
                         + Inv_Sigma_x[:,:,1,1] * np.abs(Xb[:,:,1]) ** 2
-                        + Inv_Sigma_x[:,:,2,2] * np.abs(Xb[:,:,2]) ** 2
-                        + 2. * np.real(Inv_Sigma_x[:,:,1,2] * np.conj(Xb[:,:,1]) * Xb[:,:,2])
+                        + 2. * np.real(Inv_Sigma_x[:,:,0,1] * np.conj(Xb[:,:,0]) * Xb[:,:,1])
                         ) / (N * F)
 
         if iter > 1:
@@ -161,32 +161,32 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
 
         for j in range(J):
             # compute S-Wiener gain
-            Gs[:, :, j, 1] = multiply((multiply((dot(conj(A[:,1,j]), O)), Inv_Sigma_x[:,:,1,1]) + multiply(
-                (dot(conj(A[:,2,j]), O)), Inv_Sigma_x[:,:,2,1])), sigma_ss[:, :, j])
-            Gs[:, :, j, 2] = multiply((multiply((dot(conj(A[:,1,j]), O)), Inv_Sigma_x[:,:,1,2]) + multiply(
-                (dot(conj(A[:,2,j]), O)), Inv_Sigma_x[:,:,2, 2])), sigma_ss[:, :, j])
+            Gs[:,:,j,0] = np.outer(np.conj(A[:,0,j]), O) * Inv_Sigma_x[:,:,0,0] + \
+                          np.outer(np.conj(A[:,1,j]), O) * Inv_Sigma_x[:,:,1,0] * sigma_ss[:,:,j]
+            Gs[:,:,j,1] = np.outer(np.conj(A[:,0,j]), O) * Inv_Sigma_x[:,:,0,1] + \
+                          np.outer(np.conj(A[:,1,j]), O) * Inv_Sigma_x[:,:,1,1] * sigma_ss[:,:,j]
 
             # compute Gs_x
-            Gs_x[:,:,j] = Gs[:,:,j,1] * Xb[:,:,1] + Gs[:,:,j,2] * Xb[:,:,2]
+            Gs_x[:,:,j] = Gs[:,:,j,0] * Xb[:,:,0] + Gs[:,:,j,1] * Xb[:,:,1]
 
             # compute average Rxs
+            bar_Rxs[:,0,j] = np.mean(Xb[:,:,0] * np.conj(Gs_x[:,:,j]), axis=1)
             bar_Rxs[:,1,j] = np.mean(Xb[:,:,1] * np.conj(Gs_x[:,:,j]), axis=1)
-            bar_Rxs[:,2,j] = np.mean(Xb[:,:,2] * np.conj(Gs_x[:,:,j]), axis=1)
 
         for j1 in range(J):
             # compute average Rss
             for j2 in range(J):
                 bar_Rss[:,j1,j2] = np.mean(
                         Gs_x[:,:,j1] * np.conj(Gs_x[:,:,j2]) 
-                        - ( Gs[:,:,j1,1] * np.dot(A[:,1,j2], O) + Gs[:,:,j1, 2] * np.dot(A[:,2,j2], O)) * sigma_ss[:,:,j2], 
+                        - ( Gs[:,:,j1,0] * np.outer(A[:,0,j2], O) + Gs[:,:,j1,1] * np.outer(A[:,1,j2], O)) * sigma_ss[:,:,j2], 
                         axis=1)
             bar_Rss[:,j1,j1] = bar_Rss[:,j1,j1] + np.mean(sigma_ss[:,:,j1], axis=1)
 
         # compute average Rxx
+        bar_Rxx[:,0,0] = np.mean(abs(Xb[:,:,0]) ** 2, axis=1)
         bar_Rxx[:,1,1] = np.mean(abs(Xb[:,:,1]) ** 2, axis=1)
-        bar_Rxx[:,2,2] = np.mean(abs(Xb[:,:,2]) ** 2, axis=1)
-        bar_Rxx[:,1,2] = np.mean(Xb[:,:,1] * conj(Xb[:,:,2]), axis=1)
-        bar_Rxx[:,2,1] = conj(bar_Rxx[:, 1, 2])
+        bar_Rxx[:,0,1] = np.mean(Xb[:,:,0] * conj(Xb[:,:,1]), axis=1)
+        bar_Rxx[:,1,0] = conj(bar_Rxx[:, 0, 1])
 
         # TO ASSURE that Rss = Rss'
         for f in range(F):
@@ -202,15 +202,15 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
             sigma_cc_k = np.dot(W[:,k,np.newaxis], H[np.newaxis,k,:])
 
             # compute C-Wiener gain
-            Gc_k_1 = ( np.dot(np.conj(bar_A[:,1,k]), O) * Inv_Sigma_x[:,:,1,1] + np.dot(np.conj(bar_A[:,2,k]), O) * Inv_Sigma_x[:,:,2,1]) * sigma_cc_k
-            Gc_k_2 = ( np.dot(np.conj(bar_A[:,1,k]), O) * Inv_Sigma_x[:,:,1,2] + np.dot(np.conj(bar_A[:,2,k]), O) * Inv_Sigma_x[:,:,2,2]) * sigma_cc_k
+            Gc_k_1 = ( np.outer(np.conj(bar_A[:,0,k]), O) * Inv_Sigma_x[:,:,0,0] + np.outer(np.conj(bar_A[:,1,k]), O) * Inv_Sigma_x[:,:,1,0]) * sigma_cc_k
+            Gc_k_2 = ( np.outer(np.conj(bar_A[:,0,k]), O) * Inv_Sigma_x[:,:,0,1] + np.outer(np.conj(bar_A[:,1,k]), O) * Inv_Sigma_x[:,:,1,1]) * sigma_cc_k
 
             # compute Gc_x
-            Gc_x_k = Gc_k_1 * Xb[:, :, 1] + Gc_k_2 * Xb[:, :, 2]
+            Gc_x_k = Gc_k_1 * Xb[:, :, 0] + Gc_k_2 * Xb[:, :, 1]
 
             # compute components sufficient natural statistics
             # IT IS IMPORTANT TO TAKE A REAL PART !!!!
-            Vc[:, :, k] = np.abs(Gc_x_k) ** 2 + sigma_cc_k - np.real(Gc_k_1 * np.dot( bar_A[:,1,k], O) + Gc_k_2 * np.dot(bar_A[:,2,k], O)) * sigma_cc_k
+            Vc[:, :, k] = np.abs(Gc_x_k) ** 2 + sigma_cc_k - np.real(Gc_k_1 * np.outer(bar_A[:,0,k], O) + Gc_k_2 * np.outer(bar_A[:,1,k], O)) * sigma_cc_k
 
         # M-step: re-estimate parameters
         print('   M-step')
