@@ -58,7 +58,7 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
 
     F, N, I = X.shape
     K = W0.shape[1]
-    J = source_NMF_ind.shape[0]
+    J = len(source_NMF_ind)
 
     if I != 2:
         raise ValueError('Multi_NMF_EM_conv: number of channels must be 2')
@@ -132,10 +132,10 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
         Sigma_x[:,:,1,0] = 0
         Sigma_x[:,:,1,1] = np.dot(Sigma_b, O)
         for j in range(J):
-            Sigma_x[:, :, 0, 0] += np.dot(np.abs(A[:,0,j]) ** 2, O) * sigma_ss[:,:,j]
-            Sigma_x[:, :, 0, 1] += np.dot((A[:,0,j] * np.conj(A[:,1,j])), O) * sigma_ss[:, :, j]
-            Sigma_x[:, :, 1, 0] = np.conj(Sigma_x[:,:,0,1])
-            Sigma_x[:, :, 1, 1] += np.dot(np.abs(A[:,1,j]) ** 2, O) * sigma_ss[:,:,j]
+            Sigma_x[:,:,0,0] += np.dot(np.abs(A[:,np.newaxis,0,j]) ** 2, O) * sigma_ss[:,:,j]
+            Sigma_x[:,:,0,1] += np.dot((A[:,0,j] * np.conj(A[:,1,j])), O) * sigma_ss[:, :, j]
+            Sigma_x[:,:,1,0] = np.conj(Sigma_x[:,:,0,1])
+            Sigma_x[:,:,1,1] += np.dot(np.abs(A[:,1,j]) ** 2, O) * sigma_ss[:,:,j]
 
         # compute the inverse of Sigma_x matrix
         Det_Sigma_x = Sigma_x[:,:,0,0] * Sigma_x[:,:,1,1] - np.abs(Sigma_x[:, :,0,1]) ** 2
@@ -190,7 +190,7 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
 
         # TO ASSURE that Rss = Rss'
         for f in range(F):
-            bar_Rss[f,:,:] = np.squeeze(bar_Rss[f,:,:]) + np.squeeze(bar_Rss[f,:,:]).T) / 2
+            bar_Rss[f,:,:] = (np.squeeze(bar_Rss[f,:,:]) + np.squeeze(bar_Rss[f,:,:]).T) / 2
 
         # compute extended mixing matrix A
         for j in range(J):
