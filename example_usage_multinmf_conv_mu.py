@@ -1,11 +1,13 @@
 import numpy as np
 import numpy.random as random
+import matplotlib.pyplot as plt
 import pyroomacoustics as pra
 from scipy.io import wavfile
 
-from multinmf_conv_em import multinmf_conv_em
+from multinmf_conv_mu import multinmf_conv_mu
+from multinmf_recons_im import multinmf_recons_im
 
-def example_usage_multinmf_conv_em():
+def example_usage_multinmf_conv_mu():
     #
     # example_usage_multinmf_conv_em()
     #
@@ -72,7 +74,7 @@ def example_usage_multinmf_conv_em():
     K = NMF_CompPerSrcNum * nsrc
     source_NMF_ind = []
     for j in range(nsrc):
-        source_NMF_ind.append(np.arange(NMF_CompPerSrcNum) + j * NMF_CompPerSrcNum)
+        source_NMF_ind.append(np.arange(NMF_CompPerSrcNum, dtype=np.int) + j * NMF_CompPerSrcNum)
     mix_psd = 0.5 * (np.mean(np.abs(X[:,:,0])**2 + np.abs(X[:,:,1])**2, axis=1))
     A_init = (0.5 * 
             (1.9 * np.abs(random.randn(2, nsrc, nbin)) + 0.1 * np.ones((2, nsrc, nbin))) 
@@ -89,55 +91,49 @@ def example_usage_multinmf_conv_em():
 
 
     # run 500 iterations of multichannel NMF EM algorithm (with annealing)
-    A_init = np.moveaxis(A_init, [2], [0])
+    Q_init = np.moveaxis(np.abs(A_init)**2, [2], [0])
 
-    W_EM, H_EM, Ae_EM, Sigma_b_EM, Se_EM, log_like_arr = \
-        multinmf_conv_em(X, W_init, H_init, A_init, Sigma_b_init, source_NMF_ind, iter_num=500)
-
-    Ae_EM = np.moveaxis(Ae_EM, [0,1,2], [1,2,0])
+    W_MU, H_MU, Q_MU, cost = \
+        multinmf_conv_mu(np.abs(X)**2, W_init, H_init, Q_init, source_NMF_ind, n_iter=500)
 
     # Computation of the spatial source images
-    print('Computation of the spatial source images\n')
-    Ie_EM = np.zeros((nbin,nfram,nsrc,nchan))
-    for j in range(nsrc):
-        for f in range(nbin):
-            Ie_EM[f,:,j,:] = np.outer(A[:,j,f], S[f,:,j])
+    Im = multinmf_recons_im(X, W_MU, H_MU, Q_MU, source_NMF_ind)
 
     # Inverse STFT
-    ie_EM = []
     for j in range(nsrc):
         # channel-wise istft with synthesis window
-        ie_EM = []
+        ie_MU = []
         for ch in range(nchan):
-            ie_EM.append(
-                    pra.istft(Ie_EM[:,:,j,ch].T, stft_win_len, stft_win_len // 2, win=window, transform=np.fft.irfft)
+            ie_MU.append(
+                    pra.istft(Im[:,:,j,ch].T, stft_win_len, stft_win_len // 2, win=window, transform=np.fft.irfft)
                     )
         # write the separated source to a wav file
-        out_filename = results_dir + '_sim_EM_' + str(j) + '.wav'
-        wavfile.write(out_filename, fs, np.array(ie_EM).T)
+        out_filename = results_dir + file_prefix + '_sim_MU_' + str(j) + '.wav'
+        wavfile.write(out_filename, fs, np.array(ie_MU).T)
 
-    '''
     # Plot estimated W and H
-    print('Plot estimated W and H\n')
+    print('Plot estimated W and H')
+    plt.figure()
     plot_ind = 1
-    for k = 1:NMF_CompPerSrcNum
-        for j = 1:nsrc
-            subplot(NMF_CompPerSrcNum, nsrc, plot_ind)
-            plot(log10(max(W_EM(:,source_NMF_ind{j}(k)), 1e-40)))
-            title(sprintf('Source_#d, log10(W_%d)', j, k))
-            plot_ind = plot_ind + 1
-        end
-    end
-    figure
+    for k in range(NMF_CompPerSrcNum):
+        for j in range(nsrc):
+            plt.subplot(NMF_CompPerSrcNum, nsrc, plot_ind)
+            plt.plot(np.log10(np.maximum(W_MU[:,source_NMF_ind[j][k]], 1e-40)))
+            plt.title('Source_{}, log10(W_{})'.format(j, k))
+            plot_ind += 1
+    plt.tight_layout()
+
+    plt.figure()
     plot_ind = 1
-    for k = 1:NMF_CompPerSrcNum
-        for j = 1:nsrc
-            subplot(NMF_CompPerSrcNum, nsrc, plot_ind)
-            plot(H_EM(source_NMF_ind{j}(k),:))
-            title(sprintf('Source_#d, H_%d', j, k))
+    for k in range(NMF_CompPerSrcNum):
+        for j in range(nsrc):
+            plt.subplot(NMF_CompPerSrcNum, nsrc, plot_ind)
+            plt.plot(H_MU[source_NMF_ind[j][k],:])
+            plt.title('Source_{}, H_{}'.format(j, k))
             plot_ind = plot_ind + 1
-        end
-    end
-    '''
+    plt.tight_layout()
+
+    plt.show()
+
 if __name__ == '__main__':
-    example_usage_multinmf_conv_em()
+    example_usage_multinmf_conv_mu()

@@ -47,7 +47,7 @@ addpath('aux_tools');
 
 % Input time-frequency representation
 fprintf('Input time-frequency representation\n');
-[x, fs]=wavread([data_dir file_prefix '_mix.wav']);
+[x, fs]=audioread([data_dir file_prefix '_mix.wav']);
 x = x.';
 mix_nsamp = size(x,2);
 X=stft_multi(x,stft_win_len);
@@ -84,7 +84,7 @@ fprintf('Computation of the spatial source images\n');
 Ie_EM=src_image(Se_EM,Ae_EM);
 ie_EM=istft_multi(Ie_EM,mix_nsamp);
 for j=1:nsrc,
-    wavwrite(reshape(ie_EM(j,:,:),mix_nsamp,2),fs,[results_dir file_prefix '_sim_EM_' int2str(j) '.wav']);
+    audiowrite([results_dir file_prefix '_sim_EM_' int2str(j) '.wav'], reshape(ie_EM(j,:,:),mix_nsamp,2),fs);
 end
 
 % Plot estimated W and H

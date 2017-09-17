@@ -77,19 +77,19 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
     A_prev = np.empty_like(A)
     Sigma_b_prev = np.empty_like(Sigma_b)
 
-    O = np.ones((1, N))
+    O = np.ones(N)
 
     sigma_ss = np.zeros((F, N, J))
-    Sigma_x = np.zeros((F, N, 2, 2))
-    Inv_Sigma_x = np.zeros((F, N, 2, 2))
-    Gs = np.zeros((F, N, J, 2))
-    Gs_x = np.zeros((F, N, J))
-    bar_Rxs = np.zeros((F, 2, J))
+    Sigma_x = np.zeros((F, N, 2, 2), dtype=np.complex)
+    Inv_Sigma_x = np.zeros((F, N, 2, 2), dtype=np.complex)
+    Gs = np.zeros((F, N, J, 2), dtype=np.complex)
+    Gs_x = np.zeros((F, N, J), dtype=np.complex)
+    bar_Rxs = np.zeros((F, 2, J), dtype=np.complex)
     bar_Rss = np.zeros((F, J, J))
-    bar_Rxx = np.zeros((F, 2, 2))
-    bar_A = np.zeros((F, 2, K))
+    bar_Rxx = np.zeros((F, 2, 2), dtype=np.complex)
+    bar_A = np.zeros((F, 2, K), dtype=np.complex)
     Vc = np.zeros((F, N, K))
-    log_like_arr = np.zeros((1, iter_num))
+    log_like_arr = np.zeros((iter_num))
 
     # initialize simulated annealing variances (if necessary)
     if SimAnneal_flag > 0:
@@ -114,10 +114,10 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
         sigma_ss[:,] = 0
         for j in range(J):
             for k in range(len(source_NMF_ind[j])):
-                sigma_ss[:,:,j] = sigma_ss[:,:,j] + np.dot(W[:,source_NMF_ind[j][k],np.newaxis], H[np.newaxis,source_NMF_ind[j][k],:])
+                sigma_ss[:,:,j] += np.dot(W[:,source_NMF_ind[j][k],np.newaxis], H[np.newaxis,source_NMF_ind[j][k],:])
 
         if SimAnneal_flag:
-            Sigma_b = Sigma_b_anneal[:,iter,np.newaxis]
+            Sigma_b = Sigma_b_anneal[:,iter]
 
             if SimAnneal_flag == 2:  # with noise injection
                 Noise = np.random.randn(F, N, 2) + 1j * np.random.randn(F, N, 2)  # complex noise
@@ -127,15 +127,16 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
                 Xb = X + Noise
 
         # compute the Sigma_x matrix
-        Sigma_x[:,:,0,0] = np.dot(Sigma_b, O)
+        Sigma_x[:,:,0,0] = np.outer(Sigma_b, O)
         Sigma_x[:,:,0,1] = 0
         Sigma_x[:,:,1,0] = 0
-        Sigma_x[:,:,1,1] = np.dot(Sigma_b, O)
+        Sigma_x[:,:,1,1] = np.outer(Sigma_b, O)
         for j in range(J):
-            Sigma_x[:,:,0,0] += np.dot(np.abs(A[:,np.newaxis,0,j]) ** 2, O) * sigma_ss[:,:,j]
-            Sigma_x[:,:,0,1] += np.dot((A[:,0,j] * np.conj(A[:,1,j])), O) * sigma_ss[:, :, j]
+            Sigma_x[:,:,0,0] += np.outer(np.abs(A[:,0,j]) ** 2, O) * sigma_ss[:,:,j]
+            cc = A[:,0,j] * np.conj(A[:,1,j])
+            Sigma_x[:,:,0,1] += np.outer(cc[:], O) * sigma_ss[:, :, j]
             Sigma_x[:,:,1,0] = np.conj(Sigma_x[:,:,0,1])
-            Sigma_x[:,:,1,1] += np.dot(np.abs(A[:,1,j]) ** 2, O) * sigma_ss[:,:,j]
+            Sigma_x[:,:,1,1] += np.outer(np.abs(A[:,1,j]) ** 2, O) * sigma_ss[:,:,j]
 
         # compute the inverse of Sigma_x matrix
         Det_Sigma_x = Sigma_x[:,:,0,0] * Sigma_x[:,:,1,1] - np.abs(Sigma_x[:, :,0,1]) ** 2
@@ -185,8 +186,8 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
         # compute average Rxx
         bar_Rxx[:,0,0] = np.mean(abs(Xb[:,:,0]) ** 2, axis=1)
         bar_Rxx[:,1,1] = np.mean(abs(Xb[:,:,1]) ** 2, axis=1)
-        bar_Rxx[:,0,1] = np.mean(Xb[:,:,0] * conj(Xb[:,:,1]), axis=1)
-        bar_Rxx[:,1,0] = conj(bar_Rxx[:, 0, 1])
+        bar_Rxx[:,0,1] = np.mean(Xb[:,:,0] * np.conj(Xb[:,:,1]), axis=1)
+        bar_Rxx[:,1,0] = np.conj(bar_Rxx[:, 0, 1])
 
         # TO ASSURE that Rss = Rss'
         for f in range(F):
@@ -217,17 +218,17 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
 
         # re-estimate A
         for f in range(F):
-            A[f,:,:] = np.dot(np.squeeze(np.mean(bar_Rxs[f,:,:], axis=0)), np.linalg.inv(np.squeeze(np.mean(bar_Rss[f,:,:], axis=0))))
+            A[f,:,:] = np.dot(bar_Rxs[f,:,:], np.linalg.inv(bar_Rss[f,:,:]))
 
         # re-estimate noise variances (if necessary)
         if Sigma_b_Upd_flag:
             for f in range(F):
                 Sigma_b[f] = 0.5 * np.real(
                         np.trace(
-                            np.squeeze(bar_Rxx[f, :, :]) - 
-                            np.dot(np.squeeze(A[f,:,:]), np.conj(np.squeeze(bar_Rxs[f, :, :]).T)) - 
-                            np.dot(np.squeeze(bar_Rxs[f,:,:]), np.conj(squeeze(A[f, :, :]).T)) + 
-                            np.dot(dot(squeeze(A[f, :, :]), squeeze(bar_Rss[f, :, :])), np.conj(squeeze(A[f, :, :]).T))
+                            bar_Rxx[f, :, :] - 
+                            np.dot(A[f,:,:], np.conj(bar_Rxs[f, :, :].T)) - 
+                            np.dot(bar_Rxs[f,:,:], np.conj(A[f, :, :].T)) + 
+                            np.dot(np.dot(A[f, :, :], bar_Rss[f, :, :]), np.conj(A[f, :, :].T))
                             )
                         )
         # re-estimate W, and then H
@@ -237,10 +238,11 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
 
         # Normalization
         for j in range(J):
-            nonzero_f_ind = np.where(A[:,1,j] != 0)[0]
-            A[nonzero_f_ind,2,j] = A[nonzero_f_ind,2,j] / np.sign(A[nonzero_f_ind,1,j])
-            A[nonzero_f_ind,1,j] = A[nonzero_f_ind,1,j] / np.sign(A[nonzero_f_ind,1,j])
-            A_scale = np.abs(A[:,1,j]) ** 2 + np.abs(A[:,2,j]) ** 2
+            nonzero_f_ind = np.where(A[:,0,j] != 0)[0]
+            A[nonzero_f_ind,1,j] = A[nonzero_f_ind,1,j] / np.sign(A[nonzero_f_ind,0,j])
+            A[nonzero_f_ind,0,j] = A[nonzero_f_ind,0,j] / np.sign(A[nonzero_f_ind,0,j])
+
+            A_scale = np.abs(A[:,0,j]) ** 2 + np.abs(A[:,1,j]) ** 2
             A[:,:,j] = A[:,:,j] / np.outer(np.sqrt(A_scale), np.ones(2))
             W[:,source_NMF_ind[j]] = W[:, source_NMF_ind[j]] * np.outer(A_scale, np.ones(len(source_NMF_ind[j])))
 
