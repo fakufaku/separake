@@ -1,6 +1,6 @@
 import numpy as np
 
-def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix_H=False):
+def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix_H=False, verbose=False):
     '''
     Multichannel NMF minimizing Itakura-Saito divergence through multiplicative updates
     
@@ -35,6 +35,8 @@ def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix
         When True, matrix W is kept fixed (default False)
     fix_H: bool, optional
         When True, matrix H is kept fixed (default False)
+    verbose: bool, optional
+        Show more information
 
    
     Returns
@@ -160,7 +162,8 @@ def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix
             W /= scale[np.newaxis,:]
             H *= scale[:,np.newaxis]
 
-        print('MU update: iteration', iter, 'of', n_iter, ', cost =', cost[iter])
+        if verbose and (iter % 25) == 0:
+            print('MU update: iteration', iter, 'of', n_iter, ', cost =', cost[iter])
 
     return W, H, Q, cost
 

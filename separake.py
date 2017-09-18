@@ -56,7 +56,7 @@ def multinmf_conv_mu_wrapper(x, partial_rirs, n_latent_var, n_iter=500):
     Q_init = np.moveaxis(np.abs(partial_rirs)**2, [2], [0])
 
     W_MU, H_MU, Q_MU, cost = \
-        multinmf_conv_mu(np.abs(X)**2, W_init, H_init, Q_init, source_NMF_ind, n_iter=n_iter, fix_Q=True)
+        multinmf_conv_mu(np.abs(X)**2, W_init, H_init, Q_init, source_NMF_ind, n_iter=n_iter, fix_Q=True, verbose=True)
 
     # Computation of the spatial source images
     Im = multinmf_recons_im(X, W_MU, H_MU, Q_MU, source_NMF_ind)
@@ -69,7 +69,7 @@ def multinmf_conv_mu_wrapper(x, partial_rirs, n_latent_var, n_iter=500):
             ie_MU.append(
                     pra.istft(Im[:,:,j,ch].T, stft_win_len, stft_win_len // 2, win=window, transform=np.fft.irfft)
                     )
-        print(np.array(ie_MU).T.shape)
+
         # write the separated source to a wav file
         out_filename = 'data/Speech/' + 'speech_source_' + str(j) + '_MU.wav'
         wavfile.write(out_filename, fs, np.array(ie_MU).T)
@@ -120,11 +120,11 @@ if __name__ == '__main__':
     # parameters
     fs = 16000
     nfft = 2048  # supposedly optimal at 16 kHz (Ozerov and Fevote)
-    max_order = 10
+    max_order = 10  # max image sources order in simulation
 
     # convolutive separation parameters
-    partial_length = 4
-    n_latent_var = 4
+    partial_length = 20  # number of image sources to use in the 'raking'
+    n_latent_var = 4    # number of latent variables in the NMF
     stft_win_len = 2048  # supposedly optimal at 16 kHz
 
     # the speech samples

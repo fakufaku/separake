@@ -45,7 +45,7 @@ def example_usage_multinmf_conv_mu():
 
     NMF_CompPerSrcNum = 4
     nsrc = 3
-    stft_win_len = 2048
+    stft_win_len = 2048  # supposedly optimal at 16 kHz
 
     data_dir = 'data/Shannonsongs/'
     results_dir = 'data/Shannonsongs/'
@@ -58,8 +58,8 @@ def example_usage_multinmf_conv_mu():
     mix_nsamp = x.shape[0]
     nchan = x.shape[1]
 
-    # TODO STFT
-    window = pra.cosine(stft_win_len)
+    # STFT
+    window = np.sqrt(pra.cosine(stft_win_len))
     # X is (nchan, nframe, nbin)
     X = np.array(
             [pra.stft(x[:,ch], stft_win_len, stft_win_len // 2, win=window, transform=np.fft.rfft) for ch in range(nchan)]
