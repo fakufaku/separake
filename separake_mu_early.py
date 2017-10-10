@@ -7,6 +7,8 @@ from scipy.io import wavfile
 from multinmf_conv_mu import multinmf_conv_mu
 from multinmf_recons_im import multinmf_recons_im
 
+from utilities import partial_rir
+
 # get the speed of sound from pyroomacoustics
 c = pra.constants.get('c')
 
@@ -75,47 +77,6 @@ def multinmf_conv_mu_wrapper(x, partial_rirs, n_latent_var, n_iter=500):
 
     return sep_sources
 
-def partial_rir(room, n, freqveq):
-    ''' 
-    compute the frequency-domain rir based on the n closest image sources
-    
-    Parameters
-    ----------
-    room: pyroomacoustics.Room
-        The room with sources and microphones
-    n: int
-        The number of image sources to use
-    freqveq: nd-array
-        The vector containing all the frequency points to compute
-
-    Returns
-    -------
-    An nd-array of size M x K x len(freqvec) containing all the transfer
-    functions with first index for the microphones, second for the sources,
-    third for frequency.
-    '''
-
-    M = room.mic_array.R.shape[1]
-    K = len(room.sources)
-    F = freqvec.shape[0]
-    partial_rirs = np.zeros((M,K,F), dtype=np.complex)
-
-    mic_array_center = np.mean(room.mic_array.R, axis=1)
-
-    for k, source in enumerate(room.sources):
-
-        # set source ordering to nearest to center of microphone array
-        source.set_ordering('nearest', ref_point=mic_array_center)
-
-        sources = source[:n]
-
-        # there is most likely a broadcast way of doing this
-        for m in range(M):
-            delays = pra.distance(room.mic_array.R[:,m,np.newaxis], sources.images) / c
-            partial_rirs[m,k,:] = np.sum(np.exp(-2j * np.pi * delays * freqvec[:,np.newaxis]) / (c * delays) * sources.damping[np.newaxis,:], axis=1) / (4 * np.pi)
-
-    return partial_rirs
-
 if __name__ == '__main__':
 
     # parameters
@@ -124,7 +85,7 @@ if __name__ == '__main__':
     max_order = 10  # max image sources order in simulation
 
     # convolutive separation parameters
-    partial_length = 4  # number of image sources to use in the 'raking'
+    partial_length = 2  # number of image sources to use in the 'raking'
     n_latent_var = 4    # number of latent variables in the NMF
     stft_win_len = 2048  # supposedly optimal at 16 kHz
 
