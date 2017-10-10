@@ -61,6 +61,7 @@ def multinmf_conv_mu_wrapper(x, partial_rirs, n_latent_var, n_iter=500):
     # Computation of the spatial source images
     Im = multinmf_recons_im(X, W_MU, H_MU, Q_MU, source_NMF_ind)
 
+    sep_sources = []
     # Inverse STFT
     for j in range(n_src):
         # channel-wise istft with synthesis window
@@ -70,9 +71,9 @@ def multinmf_conv_mu_wrapper(x, partial_rirs, n_latent_var, n_iter=500):
                     pra.istft(Im[:,:,j,ch].T, stft_win_len, stft_win_len // 2, win=window, transform=np.fft.irfft)
                     )
 
-        # write the separated source to a wav file
-        out_filename = 'data/Speech/' + 'speech_source_' + str(j) + '_MU.wav'
-        wavfile.write(out_filename, fs, np.array(ie_MU).T)
+        sep_sources.append(np.array(ie_MU).T)
+
+    return sep_sources
 
 def partial_rir(room, n, freqveq):
     ''' 
@@ -90,7 +91,7 @@ def partial_rir(room, n, freqveq):
     Returns
     -------
     An nd-array of size M x K x len(freqvec) containing all the transfer
-    functions with first index for the microphone, second for the source,
+    functions with first index for the microphones, second for the sources,
     third for frequency.
     '''
 
@@ -123,7 +124,7 @@ if __name__ == '__main__':
     max_order = 10  # max image sources order in simulation
 
     # convolutive separation parameters
-    partial_length = 20  # number of image sources to use in the 'raking'
+    partial_length = 4  # number of image sources to use in the 'raking'
     n_latent_var = 4    # number of latent variables in the NMF
     stft_win_len = 2048  # supposedly optimal at 16 kHz
 
@@ -141,11 +142,11 @@ if __name__ == '__main__':
     room.extrude(4.)  # add the third dimension
 
     # add two sources
-    room.add_source([2, 3.1, 1.8], signal=speech1)
+    room.add_source([2, 1.5, 1.8], signal=speech1)
     room.add_source([5.5, 4, 1.7], signal=speech2)
 
     # now add a few microphones
-    mic_locations = np.array([[3.5, 3.5, 1.5], [3.6, 3.5, 1.55], [3.55, 3.7, 1.7]]).T
+    mic_locations = np.array([[3.65, 3.5, 1.5], [3.6, 3.5, 1.55], [3.55, 3.7, 1.7]]).T
     room.add_microphone_array(
             pra.MicrophoneArray(mic_locations, fs)
             )
@@ -160,8 +161,32 @@ if __name__ == '__main__':
 
     wavfile.write('data/Speech/two_sources_mix.wav', fs, room.mic_array.signals.T)
 
+
     # run NMF
-    multinmf_conv_mu_wrapper(room.mic_array.signals.T, partial_rirs, n_latent_var, n_iter=500)
+    sep_sources = multinmf_conv_mu_wrapper(room.mic_array.signals.T, partial_rirs, n_latent_var, n_iter=500)
+
+    # Plots
+
+    plt.figure()
+    plt.subplot(1,2,1)
+    plt.specgram(speech1, Fs=r1, NFFT=nfft)
+    plt.subplot(1,2,2)
+    plt.specgram(speech2, Fs=r2, NFFT=nfft)
+    plt.title('Original sources')
+
+    plt.figure()
+    for j,s in enumerate(sep_sources):
+        # write the separated source to a wav file
+        out_filename = 'data/Speech/' + 'speech_source_' + str(j) + '_MU.wav'
+        wavfile.write(out_filename, room.fs, s)
+
+        # show spectrogram
+        plt.subplot(1,2,j+1)
+        plt.specgram(s[:,0], Fs=room.fs, NFFT=nfft)
+    plt.title('Reconstructed sources')
+
+
+
 
     # show all these nice plots
     plt.show()

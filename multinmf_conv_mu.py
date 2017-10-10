@@ -76,8 +76,7 @@ def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix
     # a bunch of helper functions
     def update_approximation(V_ap, Q, P):
         ''' Recompute the approximation '''
-        for i in range(V_ap.shape[2]):
-            V_ap[:,:,i] += Q[:,i,np.newaxis] * P
+        V_ap += Q[:,np.newaxis,:] * P[:,:,np.newaxis]
 
     def compute_cost(V, V_ap):
         ''' Compute divergence cost function '''
@@ -113,9 +112,10 @@ def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix
 
                 Wnum = np.zeros((F,Kj))
                 Wden = np.zeros((F,Kj))
+                one_over_V_ap = 1 / V_ap
                 for i in range(n_c):
-                    Wnum += Q[:,i,j,np.newaxis] * np.dot(V[:,:,i] / V_ap[:,:,i]**2, H[part[j],:].T)
-                    Wden += Q[:,i,j,np.newaxis] * np.dot(1 / V_ap[:,:,i], H[part[j],:].T)
+                    Wnum += Q[:,i,j,np.newaxis] * np.dot(V[:,:,i] * one_over_V_ap[:,:,i]**2, H[part[j],:].T)
+                    Wden += Q[:,i,j,np.newaxis] * np.dot(one_over_V_ap[:,:,i], H[part[j],:].T)
 
                 W_old = np.copy(W[:,part[j]])
                 W[:,part[j]] *= (Wnum / Wden)
@@ -130,18 +130,17 @@ def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix
 
                 Hnum = np.zeros((Kj,N))
                 Hden = np.zeros((Kj,N))
+                one_over_V_ap = 1 / V_ap
                 for i in range(n_c):
                     QW = Q[:,i,j,np.newaxis] * W[:,part[j]]
-                    Hnum += np.dot(QW.T, V[:,:,i] / V_ap[:,:,i]**2)
-                    Hden += np.dot(QW.T, 1 / V_ap[:,:,i])
+                    Hnum += np.dot(QW.T, V[:,:,i] * one_over_V_ap[:,:,i]**2)
+                    Hden += np.dot(QW.T, one_over_V_ap[:,:,i])
 
                 H_old = np.copy(H[part[j],:])
                 H[part[j],:] *= (Hnum / Hden)
 
                 P_j = np.dot(W[:,part[j]], H[part[j],:] - H_old)
                 update_approximation(V_ap, Q[:,:,j], P_j)
-
-        cost[iter] = compute_cost(V, V_ap)
 
         ### Normalize ###
 
@@ -163,6 +162,7 @@ def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix
             H *= scale[:,np.newaxis]
 
         if verbose and (iter % 25) == 0:
+            cost[iter] = compute_cost(V, V_ap)
             print('MU update: iteration', iter, 'of', n_iter, ', cost =', cost[iter])
 
     return W, H, Q, cost
