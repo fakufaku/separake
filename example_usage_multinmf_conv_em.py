@@ -1,5 +1,6 @@
 import numpy as np
 import numpy.random as random
+import matplotlib.pyplot as plt
 import pyroomacoustics as pra
 from scipy.io import wavfile
 
@@ -94,14 +95,14 @@ def example_usage_multinmf_conv_em():
     W_EM, H_EM, Ae_EM, Sigma_b_EM, Se_EM, log_like_arr = \
         multinmf_conv_em(X, W_init, H_init, A_init, Sigma_b_init, source_NMF_ind, iter_num=500)
 
-    Ae_EM = np.moveaxis(Ae_EM, [0,1,2], [1,2,0])
+    Ae_EM = np.moveaxis(Ae_EM, [0], [2])
 
     # Computation of the spatial source images
     print('Computation of the spatial source images\n')
-    Ie_EM = np.zeros((nbin,nfram,nsrc,nchan))
+    Ie_EM = np.zeros((nbin,nfram,nsrc,nchan), dtype=np.complex)
     for j in range(nsrc):
         for f in range(nbin):
-            Ie_EM[f,:,j,:] = np.outer(A[:,j,f], S[f,:,j])
+            Ie_EM[f,:,j,:] = np.outer(Se_EM[f,:,j], Ae_EM[:,j,f])
 
     # Inverse STFT
     ie_EM = []
@@ -116,28 +117,29 @@ def example_usage_multinmf_conv_em():
         out_filename = results_dir + '_sim_EM_' + str(j) + '.wav'
         wavfile.write(out_filename, fs, np.array(ie_EM).T)
 
-    '''
     # Plot estimated W and H
-    print('Plot estimated W and H\n')
+    print('Plot estimated W and H')
+    plt.figure()
     plot_ind = 1
-    for k = 1:NMF_CompPerSrcNum
-        for j = 1:nsrc
-            subplot(NMF_CompPerSrcNum, nsrc, plot_ind)
-            plot(log10(max(W_EM(:,source_NMF_ind{j}(k)), 1e-40)))
-            title(sprintf('Source_#d, log10(W_%d)', j, k))
-            plot_ind = plot_ind + 1
-        end
-    end
-    figure
+    for k in range(NMF_CompPerSrcNum):
+        for j in range(nsrc):
+            plt.subplot(NMF_CompPerSrcNum, nsrc, plot_ind)
+            plt.plot(np.log10(np.maximum(W_EM[:,source_NMF_ind[j][k]], 1e-40)))
+            plt.title('Source_{}, log10(W_{})'.format(j, k))
+            plot_ind += 1
+    plt.tight_layout()
+
+    plt.figure()
     plot_ind = 1
-    for k = 1:NMF_CompPerSrcNum
-        for j = 1:nsrc
-            subplot(NMF_CompPerSrcNum, nsrc, plot_ind)
-            plot(H_EM(source_NMF_ind{j}(k),:))
-            title(sprintf('Source_#d, H_%d', j, k))
+    for k in range(NMF_CompPerSrcNum):
+        for j in range(nsrc):
+            plt.subplot(NMF_CompPerSrcNum, nsrc, plot_ind)
+            plt.plot(H_EM[source_NMF_ind[j][k],:])
+            plt.title('Source_{}, H_{}'.format(j, k))
             plot_ind = plot_ind + 1
-        end
-    end
-    '''
+    plt.tight_layout()
+
+    plt.show()
+
 if __name__ == '__main__':
     example_usage_multinmf_conv_em()

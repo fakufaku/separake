@@ -85,7 +85,7 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
     Gs = np.zeros((F, N, J, 2), dtype=np.complex)
     Gs_x = np.zeros((F, N, J), dtype=np.complex)
     bar_Rxs = np.zeros((F, 2, J), dtype=np.complex)
-    bar_Rss = np.zeros((F, J, J))
+    bar_Rss = np.zeros((F, J, J), dtype=np.complex)
     bar_Rxx = np.zeros((F, 2, 2), dtype=np.complex)
     bar_A = np.zeros((F, 2, K), dtype=np.complex)
     Vc = np.zeros((F, N, K))
@@ -113,8 +113,7 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
         # compute a priori source variances
         sigma_ss[:,] = 0
         for j in range(J):
-            for k in range(len(source_NMF_ind[j])):
-                sigma_ss[:,:,j] += np.dot(W[:,source_NMF_ind[j][k],np.newaxis], H[np.newaxis,source_NMF_ind[j][k],:])
+            sigma_ss[:,:,j] = np.dot(W[:,source_NMF_ind[j]], H[source_NMF_ind[j],:])
 
         if SimAnneal_flag:
             Sigma_b = Sigma_b_anneal[:,iter]
@@ -126,32 +125,24 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
 
                 Xb = X + Noise
 
-        # compute the Sigma_x matrix
-        Sigma_x[:,:,0,0] = np.outer(Sigma_b, O)
-        Sigma_x[:,:,0,1] = 0
-        Sigma_x[:,:,1,0] = 0
-        Sigma_x[:,:,1,1] = np.outer(Sigma_b, O)
-        for j in range(J):
-            Sigma_x[:,:,0,0] += np.outer(np.abs(A[:,0,j]) ** 2, O) * sigma_ss[:,:,j]
-            cc = A[:,0,j] * np.conj(A[:,1,j])
-            Sigma_x[:,:,0,1] += np.outer(cc[:], O) * sigma_ss[:, :, j]
-            Sigma_x[:,:,1,0] = np.conj(Sigma_x[:,:,0,1])
-            Sigma_x[:,:,1,1] += np.outer(np.abs(A[:,1,j]) ** 2, O) * sigma_ss[:,:,j]
+        # compute the Sigma_x matrix (generalized to any number of channels)
+        for i in range(I):
+            for ii in range(i,I):
+                cc = A[:,i,:] * np.conj(A[:,ii,:])
+                Sigma_x[:,:,i,ii] = np.sum(cc[:,np.newaxis,:] * sigma_ss[:,:,:], axis=2) 
+                if i != ii:
+                    Sigma_x[:,:,ii,i] = np.conj(Sigma_x[:,:,i,ii])
+                else:
+                    Sigma_x[:,:,i,ii] += Sigma_b[:,np.newaxis]
 
         # compute the inverse of Sigma_x matrix
-        Det_Sigma_x = Sigma_x[:,:,0,0] * Sigma_x[:,:,1,1] - np.abs(Sigma_x[:, :,0,1]) ** 2
-        Inv_Sigma_x[:,:,0,0] = Sigma_x[:,:,0,0] / Det_Sigma_x
-        Inv_Sigma_x[:,:,0,1] = -Sigma_x[:,:,0,1] / Det_Sigma_x
-        Inv_Sigma_x[:,:,1,0] = np.conj(Inv_Sigma_x[:,:,0,1])
-        Inv_Sigma_x[:,:,1,1] = Sigma_x[:,:,0,0] / Det_Sigma_x
+        Inv_Sigma_x = np.linalg.inv(Sigma_x)
+        Det_Sigma_x = np.real(np.linalg.det(Sigma_x))
 
         # compute log-likelihood
-        log_like = - np.sum( 
-                        np.log(Det_Sigma_x * np.pi)
-                        + Inv_Sigma_x[:,:,0,0] * np.abs(Xb[:,:,0]) ** 2
-                        + Inv_Sigma_x[:,:,1,1] * np.abs(Xb[:,:,1]) ** 2
-                        + 2. * np.real(Inv_Sigma_x[:,:,0,1] * np.conj(Xb[:,:,0]) * Xb[:,:,1])
-                        ) / (N * F)
+        xS = np.matmul(np.conj(Xb[:,:,np.newaxis,:]), Inv_Sigma_x), 
+        xSx = np.real(np.matmul(xS, Xb[:,:,:,np.newaxis]))
+        log_like = - np.sum( np.squeeze(xSx) + np.log(Det_Sigma_x * np.pi)) / (N * F)
 
         if iter > 1:
             log_like_diff = log_like - log_like_arr[iter - 1]
@@ -162,10 +153,11 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
 
         for j in range(J):
             # compute S-Wiener gain
-            Gs[:,:,j,0] = np.outer(np.conj(A[:,0,j]), O) * Inv_Sigma_x[:,:,0,0] + \
-                          np.outer(np.conj(A[:,1,j]), O) * Inv_Sigma_x[:,:,1,0] * sigma_ss[:,:,j]
-            Gs[:,:,j,1] = np.outer(np.conj(A[:,0,j]), O) * Inv_Sigma_x[:,:,0,1] + \
-                          np.outer(np.conj(A[:,1,j]), O) * Inv_Sigma_x[:,:,1,1] * sigma_ss[:,:,j]
+            Gs[:,:,j,0] = np.conj(A[:,np.newaxis,0,j]) * Inv_Sigma_x[:,:,0,0] + \
+                    np.conj(A[:,np.newaxis,1,j]) * Inv_Sigma_x[:,:,1,0] * sigma_ss[:,:,j]
+
+            Gs[:,:,j,1] = np.conj(A[:,np.newaxis,0,j]) * Inv_Sigma_x[:,:,0,1] + \
+                    np.conj(A[:,np.newaxis,1,j]) * Inv_Sigma_x[:,:,1,1] * sigma_ss[:,:,j]
 
             # compute Gs_x
             Gs_x[:,:,j] = Gs[:,:,j,0] * Xb[:,:,0] + Gs[:,:,j,1] * Xb[:,:,1]
@@ -174,24 +166,24 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
             bar_Rxs[:,0,j] = np.mean(Xb[:,:,0] * np.conj(Gs_x[:,:,j]), axis=1)
             bar_Rxs[:,1,j] = np.mean(Xb[:,:,1] * np.conj(Gs_x[:,:,j]), axis=1)
 
+
         for j1 in range(J):
             # compute average Rss
             for j2 in range(J):
                 bar_Rss[:,j1,j2] = np.mean(
                         Gs_x[:,:,j1] * np.conj(Gs_x[:,:,j2]) 
-                        - ( Gs[:,:,j1,0] * np.outer(A[:,0,j2], O) + Gs[:,:,j1,1] * np.outer(A[:,1,j2], O)) * sigma_ss[:,:,j2], 
+                        - ( Gs[:,:,j1,0] * np.outer(A[:,0,j2], O) 
+                            + Gs[:,:,j1,1] * A[:,1,j2,np.newaxis]) * sigma_ss[:,:,j2], 
                         axis=1)
             bar_Rss[:,j1,j1] = bar_Rss[:,j1,j1] + np.mean(sigma_ss[:,:,j1], axis=1)
 
+
         # compute average Rxx
-        bar_Rxx[:,0,0] = np.mean(abs(Xb[:,:,0]) ** 2, axis=1)
-        bar_Rxx[:,1,1] = np.mean(abs(Xb[:,:,1]) ** 2, axis=1)
-        bar_Rxx[:,0,1] = np.mean(Xb[:,:,0] * np.conj(Xb[:,:,1]), axis=1)
-        bar_Rxx[:,1,0] = np.conj(bar_Rxx[:, 0, 1])
+        bar_Rxx = np.matmul(np.moveaxis(Xb, [-1], [-2]), np.conj(Xb)) / Xb.shape[1]
 
         # TO ASSURE that Rss = Rss'
         for f in range(F):
-            bar_Rss[f,:,:] = (np.squeeze(bar_Rss[f,:,:]) + np.squeeze(bar_Rss[f,:,:]).T) / 2
+            bar_Rss[f,:,:] = bar_Rss[f,:,:] + np.conj(bar_Rss[f,:,:].T) / 2
 
         # compute extended mixing matrix A
         for j in range(J):
@@ -203,15 +195,21 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
             sigma_cc_k = np.dot(W[:,k,np.newaxis], H[np.newaxis,k,:])
 
             # compute C-Wiener gain
-            Gc_k_1 = ( np.outer(np.conj(bar_A[:,0,k]), O) * Inv_Sigma_x[:,:,0,0] + np.outer(np.conj(bar_A[:,1,k]), O) * Inv_Sigma_x[:,:,1,0]) * sigma_cc_k
-            Gc_k_2 = ( np.outer(np.conj(bar_A[:,0,k]), O) * Inv_Sigma_x[:,:,0,1] + np.outer(np.conj(bar_A[:,1,k]), O) * Inv_Sigma_x[:,:,1,1]) * sigma_cc_k
+            Gc_k_1 = ( np.conj(bar_A[:,0,k,np.newaxis]) * Inv_Sigma_x[:,:,0,0] \
+                     + np.conj(bar_A[:,1,k,np.newaxis]) * Inv_Sigma_x[:,:,1,0]) * sigma_cc_k
+            Gc_k_2 = ( np.conj(bar_A[:,0,k,np.newaxis]) * Inv_Sigma_x[:,:,0,1] \
+                     + np.conj(bar_A[:,1,k,np.newaxis]) * Inv_Sigma_x[:,:,1,1]) * sigma_cc_k
 
             # compute Gc_x
             Gc_x_k = Gc_k_1 * Xb[:, :, 0] + Gc_k_2 * Xb[:, :, 1]
 
             # compute components sufficient natural statistics
             # IT IS IMPORTANT TO TAKE A REAL PART !!!!
-            Vc[:, :, k] = np.abs(Gc_x_k) ** 2 + sigma_cc_k - np.real(Gc_k_1 * np.outer(bar_A[:,0,k], O) + Gc_k_2 * np.outer(bar_A[:,1,k], O)) * sigma_cc_k
+            Vc[:,:,k] = np.abs(Gc_x_k) ** 2 + sigma_cc_k \
+                    - np.real(
+                            Gc_k_1 * bar_A[:,0,k,np.newaxis] \
+                            + Gc_k_2 * bar_A[:,1,k,np.newaxis] \
+                            ) * sigma_cc_k
 
         # M-step: re-estimate parameters
         print('   M-step')
@@ -239,20 +237,19 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
         # Normalization
         for j in range(J):
             nonzero_f_ind = np.where(A[:,0,j] != 0)[0]
-            A[nonzero_f_ind,1,j] = A[nonzero_f_ind,1,j] / np.sign(A[nonzero_f_ind,0,j])
-            A[nonzero_f_ind,0,j] = A[nonzero_f_ind,0,j] / np.sign(A[nonzero_f_ind,0,j])
+            sign = A[nonzero_f_ind,0,j] / np.abs(A[nonzero_f_ind,0,j])
+            A[nonzero_f_ind,1,j] = A[nonzero_f_ind,1,j] / sign
+            A[nonzero_f_ind,0,j] = A[nonzero_f_ind,0,j] / sign
 
             A_scale = np.abs(A[:,0,j]) ** 2 + np.abs(A[:,1,j]) ** 2
-            A[:,:,j] = A[:,:,j] / np.outer(np.sqrt(A_scale), np.ones(2))
-            W[:,source_NMF_ind[j]] = W[:, source_NMF_ind[j]] * np.outer(A_scale, np.ones(len(source_NMF_ind[j])))
+            A[:,:,j] = A[:,:,j] / np.sqrt(A_scale[:,np.newaxis])
+            W[:,source_NMF_ind[j]] = W[:, source_NMF_ind[j]] * A_scale[:,np.newaxis]
 
         # Normalisation of W components
         w = np.sum(W, axis=0)
-        d = np.diag(np.ones(K) / w)
-        W = np.dot(W, d)
-        # Energy transfer to H
-        d = np.diag(w)
-        H = np.dot(d, H)
+        W /= w[np.newaxis,:]
+        H *= w[:,np.newaxis]  # Energy transfer to H
+        
 
     # source estimates
     S = Gs_x

@@ -31,6 +31,13 @@ BC Building <br>
 Station 14 <br>
 1015 Lausanne
 
+Summary of Files
+----------------
+
+* `separake_mu_early.py` uses the Ozerov and Fevotte MU algorithm. This is the orignal attempt by Robin.
+* `separake_near_wall.py` implements the image microphone model and places the microphones close to a wall. No separation yet.
+* `utilities.py` contains auxiliary methods.
+
 Recreate the figures and sound samples
 --------------------------------------
 
@@ -67,6 +74,7 @@ The script `system_install.sh` was used to install all the required software on 
   Anaconda to speed things up. There is a [free license](https://store.continuum.io/cshop/academicanaconda) for academics.
 * We used ipyparallel and joblib for parallel computations.
 * [matplotlib](http://matplotlib.org) and [seaborn](https://stanford.edu/~mwaskom/software/seaborn/index.html#) for plotting the results.
+* [mir_eval](https://craffel.github.io/mir_eval) is used for the [BSS evaluation](https://craffel.github.io/mir_eval/#module-mir_eval.separation) routines it contains.
 
 The pyroomacoustics is used for STFT, fractionnal delay filters, microphone arrays generation, and some more.
 
@@ -74,7 +82,7 @@ The pyroomacoustics is used for STFT, fractionnal delay filters, microphone arra
 
 List of standard packages needed
 
-    numpy, scipy, pandas, ipyparallel, seaborn, zmq, joblib, samplerate
+    numpy, scipy, pandas, ipyparallel, seaborn, zmq, joblib, samplerate, mir_eval
 
 
 Systems Tested
