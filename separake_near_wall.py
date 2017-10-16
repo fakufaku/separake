@@ -1,8 +1,12 @@
 import numpy as np
 from scipy.io import wavfile
+import matplotlib.pyplot as plt
 import pyroomacoustics as pra
 
+from multinmf_conv_mu import multinmf_conv_mu_wrapper
 from utilities import partial_rir, reverse_simulate
+
+from mir_eval.separation import bss_eval_images
 
 if __name__ == '__main__':
 
@@ -17,10 +21,13 @@ if __name__ == '__main__':
     nfft = 2048  # supposedly optimal at 16 kHz (Ozerov and Fevote)
     max_order = 10  # max image sources order in simulation
 
+    partial_lengths = list(range(10))  # number of image sources to use in the 'raking'
+    n_epochs = 50          # number of epochs for simulation
+
     # convolutive separation parameters
-    partial_length = 2  # number of image sources to use in the 'raking'
-    n_latent_var = 4    # number of latent variables in the NMF
-    stft_win_len = 2048  # supposedly optimal at 16 kHz
+    mu_n_latent_var = 4    # number of latent variables in the NMF
+    mu_n_iter = 200        # number of iterations of MU algorithm
+    stft_win_len = 2048    # supposedly optimal at 16 kHz
 
     # the speech samples
     r1, speech1 = wavfile.read('data/Speech/fq_sample1.wav')
@@ -54,16 +61,65 @@ if __name__ == '__main__':
     # compute the RIR between sources and microphones
     room.compute_rir()
 
-
     # simulate propagation with two sources
     src_signals = [None] * K
-    src_signals[1] = speech1
-    src_signals[4] = speech2
+    src_signals[0] = speech1
+    src_signals[K-1] = speech2
     signals = reverse_simulate(room, src_signals)
 
-    # compute partial rir
-    freqvec = np.fft.rfftfreq(nfft, 1 / fs)
-    partial_rirs = partial_rir(room, partial_length, freqvec)
+    # simulate also the sources separately for comparison
+    single_sources = []
+    for i,s in enumerate(src_signals):
+        if s is None:
+            continue
+        feed = [None] * K
+        feed[i] = s
+        single_sources.append(reverse_simulate(room, feed, length=signals.shape[1]))
+    single_sources = np.swapaxes(np.array(single_sources), 1, 2)
 
 
+    # run simulation
+    scores = dict(
+        sdr = np.zeros((len(partial_lengths), n_epochs)),
+        isr = np.zeros((len(partial_lengths), n_epochs)),
+        sir = np.zeros((len(partial_lengths), n_epochs)),
+        sar = np.zeros((len(partial_lengths), n_epochs)),
+        )
+
+    for epoch in range(n_epochs):
+        print('Epoch', epoch)
+        for index, partial_length in enumerate(partial_lengths):
+
+            print('  Number of image microphones:', partial_length)
+
+            # compute partial rir
+            freqvec = np.fft.rfftfreq(nfft, 1 / fs)
+            partial_rirs = partial_rir(room, partial_length + 1, freqvec)
+
+            partial_rirs_sources = np.swapaxes(
+                    np.array( [pr for i,pr in enumerate(partial_rirs) if src_signals[i] is not None]),
+                    0, 1)
+
+            # separate using MU
+            sep_sources = multinmf_conv_mu_wrapper(signals.T, partial_rirs_sources, mu_n_latent_var, n_iter=mu_n_iter, verbose=False)
+
+            # compute the metrics
+            n_samples = np.minimum(single_sources.shape[1], sep_sources.shape[1])
+            ret = \
+                    bss_eval_images(single_sources[:,:n_samples,:], sep_sources[:,:n_samples,:])
+            scores['sdr'][index,epoch] = np.mean(ret[0])
+            scores['isr'][index,epoch] = np.mean(ret[1])
+            scores['sir'][index,epoch] = np.mean(ret[2])
+            scores['sar'][index,epoch] = np.mean(ret[3])
+
+
+    # plot the results
+    plt.figure()
+    for i, metric in enumerate(['sdr', 'isr', 'sir', 'sar']):
+        plt.subplot(2,2,i+1)
+        plt.plot(partial_lengths, scores[metric].mean(axis=-1))
+        plt.xlabel('number of image microphones')
+        plt.ylabel(metric)
+    plt.tight_layout()
+    plt.show()
 
