@@ -95,12 +95,13 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
     if SimAnneal_flag > 0:
         Sigma_b_anneal = np.zeros((F, iter_num))
         for iter in range(iter_num):
-            Sigma_b_anneal[:, iter] = ((np.sqrt(Sigma_b0) * (iter_num - iter) + np.ones(F) * np.sqrt(final_ann_noise_var) * iter) / iter_num) ** 2
+            Sigma_b_anneal[:, iter] = ((np.sqrt(Sigma_b0) * (iter_num - iter) \
+                + np.ones(F) * np.sqrt(final_ann_noise_var) * iter) / iter_num) ** 2
 
     # MAIN LOOP
     for iter in range(iter_num):
         print('EM iteration {} of {}\n'.format(iter, iter_num))
-        
+
         # store parameters estimated on previous iteration
         np.copyto(W_prev, W)
         np.copyto(H_prev, H)
@@ -129,20 +130,28 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
         for i in range(I):
             for ii in range(i,I):
                 cc = A[:,i,:] * np.conj(A[:,ii,:])
-                Sigma_x[:,:,i,ii] = np.sum(cc[:,np.newaxis,:] * sigma_ss[:,:,:], axis=2) 
+                Sigma_x[:,:,i,ii] = np.sum(cc[:,np.newaxis,:] * sigma_ss[:,:,:], axis=2)
                 if i != ii:
                     Sigma_x[:,:,ii,i] = np.conj(Sigma_x[:,:,i,ii])
                 else:
                     Sigma_x[:,:,i,ii] += Sigma_b[:,np.newaxis]
 
         # compute the inverse of Sigma_x matrix
-        Inv_Sigma_x = np.linalg.inv(Sigma_x)
         Det_Sigma_x = np.real(np.linalg.det(Sigma_x))
+        Inv_Sigma_x = np.linalg.inv(Sigma_x)
+
+        Inv_Sigma_x_mat = np.copy(Inv_Sigma_x)*0
+        Inv_Sigma_x_mat[:,:,0,0] = Sigma_x[:,:,1,1] / Det_Sigma_x
+        Inv_Sigma_x_mat[:,:,0,1] = Sigma_x[:,:,0,1] / Det_Sigma_x
+        Inv_Sigma_x_mat[:,:,1,0] = np.conj(Inv_Sigma_x[:,:,0,1])
+        Inv_Sigma_x_mat[:,:,1,1] = Sigma_x[:,:,0,0] / Det_Sigma_x
 
         # compute log-likelihood
-        xS = np.matmul(np.conj(Xb[:,:,np.newaxis,:]), Inv_Sigma_x), 
+        xS = np.matmul(np.conj(Xb[:,:,np.newaxis,:]), Inv_Sigma_x)
         xSx = np.real(np.matmul(xS, Xb[:,:,:,np.newaxis]))
         log_like = - np.sum( np.squeeze(xSx) + np.log(Det_Sigma_x * np.pi)) / (N * F)
+
+        print("log_like: ", log_like)
 
         if iter > 1:
             log_like_diff = log_like - log_like_arr[iter - 1]
@@ -152,12 +161,13 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
         log_like_arr[iter] = log_like
 
         for j in range(J):
-            # compute S-Wiener gain
-            Gs[:,:,j,0] = np.conj(A[:,np.newaxis,0,j]) * Inv_Sigma_x[:,:,0,0] + \
-                    np.conj(A[:,np.newaxis,1,j]) * Inv_Sigma_x[:,:,1,0] * sigma_ss[:,:,j]
 
-            Gs[:,:,j,1] = np.conj(A[:,np.newaxis,0,j]) * Inv_Sigma_x[:,:,0,1] + \
-                    np.conj(A[:,np.newaxis,1,j]) * Inv_Sigma_x[:,:,1,1] * sigma_ss[:,:,j]
+            # compute S-Wiener gain
+            Gs[:,:,j,0] = (np.conj(A[:,np.newaxis,0,j]) * Inv_Sigma_x[:,:,0,0] + \
+                    np.conj(A[:,np.newaxis,1,j]) * Inv_Sigma_x[:,:,1,0]) * sigma_ss[:,:,j]
+
+            Gs[:,:,j,1] = (np.conj(A[:,np.newaxis,0,j]) * Inv_Sigma_x[:,:,0,1] + \
+                    np.conj(A[:,np.newaxis,1,j]) * Inv_Sigma_x[:,:,1,1]) * sigma_ss[:,:,j]
 
             # compute Gs_x
             Gs_x[:,:,j] = Gs[:,:,j,0] * Xb[:,:,0] + Gs[:,:,j,1] * Xb[:,:,1]
@@ -166,14 +176,20 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
             bar_Rxs[:,0,j] = np.mean(Xb[:,:,0] * np.conj(Gs_x[:,:,j]), axis=1)
             bar_Rxs[:,1,j] = np.mean(Xb[:,:,1] * np.conj(Gs_x[:,:,j]), axis=1)
 
+        # print("Gs_x", Gs_x.shape, np.abs(Gs_x[:3,0,0]))
+        # print("bar_Rxs", bar_Rxs.shape, np.abs(bar_Rxs[:3,0,0]))
+
+        # print("sigma_ss", sigma_ss.shape, np.abs(sigma_ss[:3,0,0]))
+
+        print("bar_Rss", bar_Rxs.shape, np.abs(bar_Rss[:3,0,0]))
 
         for j1 in range(J):
             # compute average Rss
             for j2 in range(J):
                 bar_Rss[:,j1,j2] = np.mean(
-                        Gs_x[:,:,j1] * np.conj(Gs_x[:,:,j2]) 
-                        - ( Gs[:,:,j1,0] * np.outer(A[:,0,j2], O) 
-                            + Gs[:,:,j1,1] * A[:,1,j2,np.newaxis]) * sigma_ss[:,:,j2], 
+                        Gs_x[:,:,j1] * np.conj(Gs_x[:,:,j2])
+                        - ( Gs[:,:,j1,0] * np.outer(A[:,0,j2], O)
+                            + Gs[:,:,j1,1] * A[:,1,j2,np.newaxis]) * sigma_ss[:,:,j2],
                         axis=1)
             bar_Rss[:,j1,j1] = bar_Rss[:,j1,j1] + np.mean(sigma_ss[:,:,j1], axis=1)
 
@@ -181,9 +197,10 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
         # compute average Rxx
         bar_Rxx = np.matmul(np.moveaxis(Xb, [-1], [-2]), np.conj(Xb)) / Xb.shape[1]
 
+
         # TO ASSURE that Rss = Rss'
         for f in range(F):
-            bar_Rss[f,:,:] = bar_Rss[f,:,:] + np.conj(bar_Rss[f,:,:].T) / 2
+            bar_Rss[f,:,:] = (bar_Rss[f,:,:] + np.conj(bar_Rss[f,:,:].T)) / 2
 
         # compute extended mixing matrix A
         for j in range(J):
@@ -211,7 +228,7 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
                             + Gc_k_2 * bar_A[:,1,k,np.newaxis] \
                             ) * sigma_cc_k
 
-        # M-step: re-estimate parameters
+        # M-step: re-estimate
         print('   M-step')
 
         # re-estimate A
@@ -223,9 +240,9 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
             for f in range(F):
                 Sigma_b[f] = 0.5 * np.real(
                         np.trace(
-                            bar_Rxx[f, :, :] - 
-                            np.dot(A[f,:,:], np.conj(bar_Rxs[f, :, :].T)) - 
-                            np.dot(bar_Rxs[f,:,:], np.conj(A[f, :, :].T)) + 
+                            bar_Rxx[f, :, :] -
+                            np.dot(A[f,:,:], np.conj(bar_Rxs[f, :, :].T)) -
+                            np.dot(bar_Rxs[f,:,:], np.conj(A[f, :, :].T)) +
                             np.dot(np.dot(A[f, :, :], bar_Rss[f, :, :]), np.conj(A[f, :, :].T))
                             )
                         )
@@ -249,8 +266,6 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
         w = np.sum(W, axis=0)
         W /= w[np.newaxis,:]
         H *= w[:,np.newaxis]  # Energy transfer to H
-        
-
     # source estimates
     S = Gs_x
 
