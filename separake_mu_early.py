@@ -4,78 +4,13 @@ import pyroomacoustics as pra
 import matplotlib.pyplot as plt
 from scipy.io import wavfile
 
-from multinmf_conv_mu import multinmf_conv_mu
+from multinmf_conv_mu import multinmf_conv_mu_wrapper
 from multinmf_recons_im import multinmf_recons_im
 
 from utilities import partial_rir
 
 # get the speed of sound from pyroomacoustics
 c = pra.constants.get('c')
-
-def multinmf_conv_mu_wrapper(x, partial_rirs, n_latent_var, n_iter=500):
-    '''
-    Parameters
-    ----------
-    x: ndarray
-        (n_samples x n_channel) array of time domain samples
-    partial_rirs: ndarray
-        (n_channel x n_src x n_bins) array of partial TF
-    n_latent_var: int
-        number of latent variables in the NMF
-    '''
-
-    n_channel = x.shape[1]
-    n_src = partial_rirs.shape[1]
-    stft_win_len = 2 * (partial_rirs.shape[2] - 1)
-
-    # STFT
-    window = np.sqrt(pra.cosine(stft_win_len))  # use sqrt because of synthesis
-    # X is (n_channel, n_frame, n_bin)
-    X = np.array(
-            [pra.stft(x[:,ch], stft_win_len, stft_win_len // 2, win=window, transform=np.fft.rfft) for ch in range(n_channel)]
-            )
-    # move axes to match Ozerov's order (n_bin, n_frame, n_channel)
-    X = np.moveaxis(X, [0,1,2], [2,1,0])
-    n_bin = X.shape[0]
-    n_frame = X.shape[1]
-
-    # Random initialization of multichannel NMF parameters
-    print('Random initialization of multichannel NMF parameters')
-    K = n_latent_var * n_src
-    source_NMF_ind = []
-    for j in range(n_src):
-        source_NMF_ind = np.reshape(np.arange(n_latent_var * n_src, dtype=np.int), (n_src,-1))
-
-    mix_psd = 0.5 * (np.mean(np.abs(X[:,:,0])**2 + np.abs(X[:,:,1])**2, axis=1))
-    # W is intialized so that its enegy follows mixture PSD
-    W_init = 0.5 * (
-            ( np.abs(np.random.randn(n_bin,K)) + np.ones((n_bin,K)) ) 
-            * ( mix_psd[:,np.newaxis] * np.ones((1,K)) )
-            )
-    H_init = 0.5 * ( np.abs(np.random.randn(K,n_frame)) + np.ones((K,n_frame)) )
-
-    # squared mag partial rirs (n_bin, n_channel, n_src)
-    Q_init = np.moveaxis(np.abs(partial_rirs)**2, [2], [0])
-
-    W_MU, H_MU, Q_MU, cost = \
-        multinmf_conv_mu(np.abs(X)**2, W_init, H_init, Q_init, source_NMF_ind, n_iter=n_iter, fix_Q=True, verbose=True)
-
-    # Computation of the spatial source images
-    Im = multinmf_recons_im(X, W_MU, H_MU, Q_MU, source_NMF_ind)
-
-    sep_sources = []
-    # Inverse STFT
-    for j in range(n_src):
-        # channel-wise istft with synthesis window
-        ie_MU = []
-        for ch in range(n_channel):
-            ie_MU.append(
-                    pra.istft(Im[:,:,j,ch].T, stft_win_len, stft_win_len // 2, win=window, transform=np.fft.irfft)
-                    )
-
-        sep_sources.append(np.array(ie_MU).T)
-
-    return sep_sources
 
 if __name__ == '__main__':
 

@@ -46,7 +46,7 @@ def partial_rir(room, n, freqvec):
     return partial_rirs
 
 
-def reverse_simulate(room, source_signals, delays=None):
+def reverse_simulate(room, source_signals, delays=None, length=None):
     '''
     Simulate playing a source at microphones locations and recording at the source locations.
 
@@ -58,6 +58,9 @@ def reverse_simulate(room, source_signals, delays=None):
         A list of signals to play for each microphone in the room
     delays: array_like
         Possible delays associated with each signal to play
+    length: int
+        The length in samples of the output signal. If the actual signal is
+        longer, it is truncated. If it is shorter, it is zero-padded.
 
     Returns
     -------
@@ -93,10 +96,14 @@ def reverse_simulate(room, source_signals, delays=None):
     from itertools import product
     max_len_rir = np.array([len(room.rir[i][j])
                             for i, j in product(range(M), range(S))]).max()
-    max_sig_len = np.array([len(source_signals[i]) + delays_samples[i] for i in range(S) if source_signals[i] is not None]).max()
+    max_sig_len = np.array([len(source_signals[i]) + delays_samples[i] for i in range(M) if source_signals[i] is not None]).max()
     L = int(max_len_rir) + int(max_sig_len) - 1
     if L % 2 == 1:
         L += 1
+
+    # enforce length parameter if given
+    if length is not None:
+        L = length
 
     # the array that will receive all the signals
     signals = np.zeros((S, L))
@@ -110,7 +117,14 @@ def reverse_simulate(room, source_signals, delays=None):
             rx = signals[s]
             d = delays_samples[m]
             h = room.rir[m][s]
-            rx[d:d + len(sig) + len(h) - 1] += fftconvolve(h, sig)
+
+            if d > L:
+                continue
+            elif d + len(sig) + len(h) - 1 > L:
+                d2 = L
+            else:
+                d2 = d + len(sig) + len(h) - 1
+            rx[d:d2] += fftconvolve(h, sig[:d2 - d])
 
         # add white gaussian noise if necessary
         if room.sigma2_awgn is not None:
