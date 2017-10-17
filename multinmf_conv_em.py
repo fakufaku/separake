@@ -94,10 +94,6 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
     Vc = np.zeros((F, N, K))
     log_like_arr = np.zeros((iter_num))
 
-    Gs_old = np.zeros((F, N, J, I), dtype=np.complex)
-    Gs_x_old = np.zeros((F, N, J), dtype=np.complex)
-    Vc_old = np.zeros((F, N, K))
-
     # initialize simulated annealing variances (if necessary)
     if SimAnneal_flag > 0:
         Sigma_b_anneal = np.zeros((F, iter_num))
@@ -164,19 +160,11 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
         Gs_old = np.zeros((F, N, J, I), dtype=np.complex)
         for j in range(J):
             # compute S-Wiener gain
-            Gs_old[:,:,j,0] = (np.conj(A[:,np.newaxis,0,j]) * Inv_Sigma_x[:,:,0,0] + \
-                    np.conj(A[:,np.newaxis,1,j]) * Inv_Sigma_x[:,:,1,0]) * sigma_ss[:,:,j]
-
-            Gs_old[:,:,j,1] = (np.conj(A[:,np.newaxis,0,j]) * Inv_Sigma_x[:,:,0,1] + \
-                    np.conj(A[:,np.newaxis,1,j]) * Inv_Sigma_x[:,:,1,1]) * sigma_ss[:,:,j]
-
             for i in range(I):
                 for ii in range(I):
                     Gs[:,:,j,i] += np.conj(A[:,None,ii,j]) * Inv_Sigma_x[:,:,ii,i]
 
             Gs[:,:,j,:] *= sigma_ss[:,:,j,None]
-
-            if not np.allclose(Gs_old, Gs): raise ValueError()
 
             # compute Gs_x
             Gs_x[:,:,j] = np.einsum('fti,fti->ft', Gs[:,:,j,:], Xb)
@@ -222,17 +210,8 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
                     Gc_k_i[:,:,i] += ( np.conj(bar_A[:,ii,k,None]) * Inv_Sigma_x[:,:,ii,i] ) \
                                      * sigma_cc_k
 
-            Gc_k_1 = ( np.conj(bar_A[:,0,k,np.newaxis]) * Inv_Sigma_x[:,:,0,0] \
-                     + np.conj(bar_A[:,1,k,np.newaxis]) * Inv_Sigma_x[:,:,1,0]) * sigma_cc_k
-
-            Gc_k_2 = ( np.conj(bar_A[:,0,k,np.newaxis]) * Inv_Sigma_x[:,:,0,1] \
-                     + np.conj(bar_A[:,1,k,np.newaxis]) * Inv_Sigma_x[:,:,1,1]) * sigma_cc_k
-
             # compute Gc_x
-            Gc_x_k_old = Gc_k_1 * Xb[:, :, 0] + Gc_k_2 * Xb[:, :, 1]
             Gc_x_k = np.einsum('fni,fni->fn', Gc_k_i, Xb)
-
-            if not np.allclose(Gc_x_k_old, Gc_x_k): raise ValueError()
 
             # compute components sufficient natural statistics
             # IT IS IMPORTANT TO TAKE A REAL PART !!!!
