@@ -92,6 +92,7 @@ def example_usage_multinmf_conv_em():
     # run 500 iterations of multichannel NMF EM algorithm (with annealing)
     A_init = np.moveaxis(A_init, [2], [0])
 
+    # from scipy.io import loadmat
     # from_matlab = loadmat("/home/chutlhu/Documents/MATLAB/multi_nmf_toolbox/input.mat")
     # X = np.array(from_matlab["X"])
     # W_init = np.array(from_matlab["W_init"])
@@ -100,7 +101,7 @@ def example_usage_multinmf_conv_em():
     # Sigma_b_init = np.array(from_matlab["Sigma_b_init"]).squeeze()
     # source_NMF_ind = from_matlab["source_NMF_ind"][0]
     # for idx, item in enumerate(source_NMF_ind):
-    #     source_NMF_ind[idx] = item[0]-1
+    #  source_NMF_ind[idx] = item[0]-1
 
     W_EM, H_EM, Ae_EM, Sigma_b_EM, Se_EM, log_like_arr = \
         multinmf_conv_em(X, W_init, H_init, A_init, Sigma_b_init, source_NMF_ind, iter_num=500)

@@ -6,7 +6,7 @@ from multinmf_recons_im import multinmf_recons_im
 def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix_H=False, verbose=False):
     '''
     Multichannel NMF minimizing Itakura-Saito divergence through multiplicative updates
-    
+
     [Q, W, H, cost] = multinmf_conv_mu(V, n_iter, Q, W, H, part, switch_Q, switch_W, switch_H)
 
     Sizes
@@ -15,7 +15,7 @@ def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix
     * K: number of latent variables in the non-negative decomposition
     * n_c: number of channels
     * n_s: number of sources
-   
+
     Parameters
     ----------
     V:
@@ -41,22 +41,22 @@ def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix
     verbose: bool, optional
         Show more information
 
-   
+
     Returns
     -------
       - Estimated Q, W and H
       - Cost through iterations betw. data power and fitted variance.
-    
+
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     Copyright 2017 Robin Scheibler robin, ported to python
     Copyright 2010 Cedric Fevotte
     (cedric.fevotte -at- telecom-paristech.fr)
-    
+
     This software is distributed under the terms of the GNU Public License
     version 3 (http://www.gnu.org/licenses/gpl.txt)
-    
+
     If you use this code please cite this paper
-    
+
     A. Ozerov and C. Fevotte,
     "Multichannel nonnegative matrix factorization in convolutive mixtures for audio source separation,"
     IEEE Trans. on Audio, Speech and Lang. Proc. special issue on Signal Models and Representations
@@ -103,7 +103,7 @@ def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix
                 Q_old = np.copy(Q[:,:,j])
 
                 for i in range(n_c):
-                    Q[:,i,j] *= ( np.dot(V[:,:,i] * P_j / V_ap[:,:,i]**2, np.ones(N)) 
+                    Q[:,i,j] *= ( np.dot(V[:,:,i] * P_j / V_ap[:,:,i]**2, np.ones(N))
                             / np.dot(P_j / V_ap[:,:,i], np.ones(N)) )
 
                 update_approximation(V_ap, Q[:,:,j] - Q_old, P_j)
@@ -209,7 +209,7 @@ def multinmf_conv_mu_wrapper(x, partial_rirs, n_latent_var, n_iter=500, verbose=
     mix_psd = 0.5 * (np.mean(np.abs(X[:,:,0])**2 + np.abs(X[:,:,1])**2, axis=1))
     # W is intialized so that its enegy follows mixture PSD
     W_init = 0.5 * (
-            ( np.abs(np.random.randn(n_bin,K)) + np.ones((n_bin,K)) ) 
+            ( np.abs(np.random.randn(n_bin,K)) + np.ones((n_bin,K)) )
             * ( mix_psd[:,np.newaxis] * np.ones((1,K)) )
             )
     H_init = 0.5 * ( np.abs(np.random.randn(K,n_frame)) + np.ones((K,n_frame)) )
@@ -236,4 +236,3 @@ def multinmf_conv_mu_wrapper(x, partial_rirs, n_latent_var, n_iter=500, verbose=
         sep_sources.append(np.array(ie_MU).T)
 
     return np.array(sep_sources)
-
