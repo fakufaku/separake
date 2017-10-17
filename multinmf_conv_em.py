@@ -176,13 +176,6 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
             bar_Rxs[:,0,j] = np.mean(Xb[:,:,0] * np.conj(Gs_x[:,:,j]), axis=1)
             bar_Rxs[:,1,j] = np.mean(Xb[:,:,1] * np.conj(Gs_x[:,:,j]), axis=1)
 
-        # print("Gs_x", Gs_x.shape, np.abs(Gs_x[:3,0,0]))
-        # print("bar_Rxs", bar_Rxs.shape, np.abs(bar_Rxs[:3,0,0]))
-
-        # print("sigma_ss", sigma_ss.shape, np.abs(sigma_ss[:3,0,0]))
-
-        print("bar_Rss", bar_Rxs.shape, np.abs(bar_Rss[:3,0,0]))
-
         for j1 in range(J):
             # compute average Rss
             for j2 in range(J):
