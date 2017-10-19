@@ -76,9 +76,11 @@ def example_usage_multinmf_conv_em():
     for j in range(nsrc):
         source_NMF_ind.append(np.arange(NMF_CompPerSrcNum) + j * NMF_CompPerSrcNum)
     mix_psd = 0.5 * (np.mean(np.abs(X[:,:,0])**2 + np.abs(X[:,:,1])**2, axis=1))
+    random_phases = random.randn(2, nsrc, nbin) + 1j * random.randn(2, nsrc, nbin)
+    random_phases /= np.abs(random_phases)
     A_init = (0.5 *
             (1.9 * np.abs(random.randn(2, nsrc, nbin)) + 0.1 * np.ones((2, nsrc, nbin)))
-            * np.sign( random.randn(2, nsrc, nbin) + 1j * random.randn(2, nsrc, nbin))
+            * random_phases
             )
     # W is intialized so that its enegy follows mixture PSD
     W_init = 0.5 * (
