@@ -125,7 +125,6 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
             if SimAnneal_flag == 2:  # with noise injection
                 Noise = np.random.randn(F, N, I) + 1j * np.random.randn(F, N, I)  # complex noise
                 for i in range(I):
-                    # TODO check if is diveded by I or just 2
                     Noise[:,:,i] *= np.outer(np.sqrt(Sigma_b / 2), np.ones(N))
 
                 Xb = X + Noise
@@ -134,7 +133,7 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
         for i in range(I):
             for ii in range(i,I):
                 cc = A[:,i,:] * np.conj(A[:,ii,:])
-                Sigma_x[:,:,i,ii] = np.sum(cc[:,np.newaxis,:] * sigma_ss[:,:,:], axis=2)
+                Sigma_x[:,:,i,ii] = np.sum(cc[:,np.newaxis,:] * sigma_ss, axis=2)
                 if i != ii:
                     Sigma_x[:,:,ii,i] = np.conj(Sigma_x[:,:,i,ii])
                 else:
@@ -145,8 +144,21 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
         Inv_Sigma_x = np.linalg.inv(Sigma_x)
 
         # compute log-likelihood
-        xS = np.matmul(np.conj(Xb[:,:,np.newaxis,:]), Inv_Sigma_x)
-        xSx = np.real(np.matmul(xS, Xb[:,:,:,np.newaxis]))
+        xS = np.matmul(np.conj(Xb[:,:,None,:]), Inv_Sigma_x)
+        xSx = np.real(np.matmul(xS, Xb[:,:,:,None]))
+        # xS = np.matmul(Xb[:,:,:,None], np.conj(Xb[:,:,None,:]))
+        # xSx1 = np.trace(np.matmul(xS, Inv_Sigma_x), axis1=, axis2=-1))
+        # xSx1 = np.trace(np.real(np.matmul(xS, Inv_Sigma_x)), axis1=2, axis2=3)
+        # print(xSx1.shape)
+        # xSx1 = np.zeros((F,N))
+        # for i in range(I):
+        #     for ii in range(I):
+        #         print(i, ii)
+        #         if i == ii:
+        #             xSx1 += np.real(Inv_Sigma_x[:,:,i,ii] * np.abs(Xb[:,:,ii])**2)
+        #         else:
+        #             xSx1 += np.real(Inv_Sigma_x[:,:,i,ii] * np.conj(Xb[:,:,i]) * Xb[:,:,ii])
+        # log_like1 = - np.sum( xSx1 + np.log(Det_Sigma_x * np.pi)) / (N * F)
         log_like = - np.sum( np.squeeze(xSx) + np.log(Det_Sigma_x * np.pi)) / (N * F)
 
         if iter > 1:
@@ -156,15 +168,10 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
             print('Log-likelihood:', log_like)
         log_like_arr[iter] = log_like
 
-        Gs = np.zeros((F, N, J, I), dtype=np.complex)
-        Gs_old = np.zeros((F, N, J, I), dtype=np.complex)
         for j in range(J):
             # compute S-Wiener gain
-            for i in range(I):
-                for ii in range(I):
-                    Gs[:,:,j,i] += np.conj(A[:,None,ii,j]) * Inv_Sigma_x[:,:,ii,i]
-
-            Gs[:,:,j,:] *= sigma_ss[:,:,j,None]
+            Gs[:,:,j,:] = ( np.matmul(np.conj(A[:,None,None,:,j]), Inv_Sigma_x).squeeze()\
+                             * sigma_ss[:,:,j,None])
 
             # compute Gs_x
             Gs_x[:,:,j] = np.einsum('fti,fti->ft', Gs[:,:,j,:], Xb)
@@ -176,9 +183,7 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
         for j1 in range(J):
             # compute average Rss
             for j2 in range(J):
-                GsA = np.zeros([F,N], dtype=np.complex)
-                for i in range(I):
-                    GsA += Gs[:,:,j1,i] * A[:,i,j2,None]
+                GsA = (np.matmul(Gs[:,:,j1,None,:], A[:,None,:,j2,None])).squeeze()
                 bar_Rss[:,j1,j2] = np.mean(
                                     Gs_x[:,:,j1] * np.conj(Gs_x[:,:,j2])
                                     - GsA * sigma_ss[:,:,j2],
@@ -204,20 +209,18 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
             sigma_cc_k = np.dot(W[:,k,np.newaxis], H[np.newaxis,k,:])
 
             # compute C-Wiener gain
-            Gc_k_i = np.zeros([F,N,I], dtype=np.complex)
-            for i in range(I):
-                for ii in range(I):
-                    Gc_k_i[:,:,i] += ( np.conj(bar_A[:,ii,k,None]) * Inv_Sigma_x[:,:,ii,i] ) \
-                                     * sigma_cc_k
+            Gc_k = ( np.matmul(np.conj(bar_A[:,None,None,:,k]), Inv_Sigma_x).squeeze()\
+                 * sigma_cc_k[:,:,None])
 
             # compute Gc_x
-            Gc_x_k = np.einsum('fni,fni->fn', Gc_k_i, Xb)
+            Gc_x_k = np.einsum('fni,fni->fn', Gc_k, Xb)
+
 
             # compute components sufficient natural statistics
             # IT IS IMPORTANT TO TAKE A REAL PART !!!!
             Vc[:,:,k] = np.abs(Gc_x_k) ** 2 + sigma_cc_k \
                      - np.real(
-                          np.einsum('fni,fi->fn',Gc_k_i,bar_A[:,:,k])
+                          np.matmul(Gc_k,bar_A[:,:,k,None]).squeeze()
                        ) * sigma_cc_k
 
         # M-step: re-estimate
@@ -310,8 +313,10 @@ def multinmf_conv_em_wrapper(x, partial_rirs, n_latent_var, n_iter = 500, verbos
 
     mix_psd = 0.5 * (np.mean(np.abs(X[:,:,0])**2 + np.abs(X[:,:,1])**2, axis=1))
     A_init = (0.5 *
-            (1.9 * np.abs(random.randn(2, n_src, n_bin)) + 0.1 * np.ones((2, n_src, n_bin)))
-            * np.sign( random.randn(2, n_src, n_bin) + 1j * random.randn(2, n_src, n_bin))
+                ( 1.9 * np.abs(random.randn(n_bin, n_channel, n_src))       \
+                + 0.1 * np.ones((n_bin, n_channel, n_src))                  \
+                ) * np.sign( random.randn(n_bin, n_channel, n_src)          \
+                            + 1j * random.randn(n_bin, n_channel, n_src))  \
             )
     # W is intialized so that its enegy follows mixture PSD
     W_init = 0.5 * (
@@ -331,7 +336,7 @@ def multinmf_conv_em_wrapper(x, partial_rirs, n_latent_var, n_iter = 500, verbos
 
     # Computation of the spatial source images
     print('Computation of the spatial source images\n')
-    Ie_EM = np.zeros((n_bin,nfram,n_src,nchan), dtype=np.complex)
+    Ie_EM = np.zeros((n_bin,n_fram,n_src,nchan), dtype=np.complex)
     for j in range(n_src):
         for f in range(n_bin):
             Ie_EM[f,:,j,:] = np.outer(Se_EM[f,:,j], Ae_EM[:,j,f])
