@@ -3,7 +3,7 @@ import pyroomacoustics as pra
 
 from multinmf_recons_im import multinmf_recons_im
 
-def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix_H=False, verbose=False):
+def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix_H=False, H_l1_reg=0., smooth_reg=0., smoothing_matrix=None, verbose=False):
     '''
     Multichannel NMF minimizing Itakura-Saito divergence through multiplicative updates
 
@@ -38,6 +38,8 @@ def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix
         When True, matrix W is kept fixed (default False)
     fix_H: bool, optional
         When True, matrix H is kept fixed (default False)
+    H_l1_reg: float
+        The weight of the l1 (sparsity) regularizer
     verbose: bool, optional
         Show more information
 
@@ -81,9 +83,9 @@ def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix
         ''' Recompute the approximation '''
         V_ap += Q[:,np.newaxis,:] * P[:,:,np.newaxis]
 
-    def compute_cost(V, V_ap):
+    def compute_cost(V, V_ap, H, l1_reg):
         ''' Compute divergence cost function '''
-        return np.sum(V / V_ap - np.log(V / V_ap)) - np.prod(V.shape)
+        return np.sum(V / V_ap - np.log(V / V_ap)) - np.prod(V.shape) + l1_reg * np.sum(H)
 
     # Compute app. variance structure V_ap
     for j in range(n_s):
@@ -91,7 +93,7 @@ def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix
         update_approximation(V_ap, Q[:,:,j], P_j)
 
     # initial cost
-    cost[0] = compute_cost(V, V_ap)
+    cost[0] = compute_cost(V, V_ap, H, H_l1_reg)
 
     # start the iteration
     for iter in range(1,n_iter):
@@ -139,6 +141,10 @@ def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix
                     Hnum += np.dot(QW.T, V[:,:,i] * one_over_V_ap[:,:,i]**2)
                     Hden += np.dot(QW.T, one_over_V_ap[:,:,i])
 
+                # regularize for sparsity if required
+                if H_l1_reg != 0.:
+                    Hden += H_l1_reg
+
                 H_old = np.copy(H[part[j],:])
                 H[part[j],:] *= (Hnum / Hden)
 
@@ -165,12 +171,12 @@ def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix
             H *= scale[:,np.newaxis]
 
         if verbose and (iter % 25) == 0:
-            cost[iter] = compute_cost(V, V_ap)
+            cost[iter] = compute_cost(V, V_ap, H, H_l1_reg)
             print('MU update: iteration', iter, 'of', n_iter, ', cost =', cost[iter])
 
     return W, H, Q, cost
 
-def multinmf_conv_mu_wrapper(x, partial_rirs, n_latent_var, n_iter=500, verbose=False):
+def multinmf_conv_mu_wrapper(x, partial_rirs, n_latent_var, W_dict=None, n_iter=500, l1_reg=0., random_seed=0, verbose=False):
     '''
     A wrapper around multichannel nmf using MU updates to use with pyroormacoustcs.
     Performs STFT and ensures all signals are the correct shape.
@@ -201,6 +207,8 @@ def multinmf_conv_mu_wrapper(x, partial_rirs, n_latent_var, n_iter=500, verbose=
     n_frame = X.shape[1]
 
     # Random initialization of multichannel NMF parameters
+    np.random.seed(random_seed)
+
     K = n_latent_var * n_src
     source_NMF_ind = []
     for j in range(n_src):
@@ -208,17 +216,26 @@ def multinmf_conv_mu_wrapper(x, partial_rirs, n_latent_var, n_iter=500, verbose=
 
     mix_psd = 0.5 * (np.mean(np.abs(X[:,:,0])**2 + np.abs(X[:,:,1])**2, axis=1))
     # W is intialized so that its enegy follows mixture PSD
-    W_init = 0.5 * (
-            ( np.abs(np.random.randn(n_bin,K)) + np.ones((n_bin,K)) )
-            * ( mix_psd[:,np.newaxis] * np.ones((1,K)) )
-            )
+    if W_dict is None:
+        W_init = 0.5 * (
+                ( np.abs(np.random.randn(n_bin,K)) + np.ones((n_bin,K)) )
+                * ( mix_psd[:,np.newaxis] * np.ones((1,K)) )
+                )
+        fix_W = False
+    else:
+        W_init = np.tile(W_dict, n_src)
+        fix_W = True
     H_init = 0.5 * ( np.abs(np.random.randn(K,n_frame)) + np.ones((K,n_frame)) )
 
     # squared mag partial rirs (n_bin, n_channel, n_src)
     Q_init = np.moveaxis(np.abs(partial_rirs)**2, [2], [0])
 
     W_MU, H_MU, Q_MU, cost = \
-        multinmf_conv_mu(np.abs(X)**2, W_init, H_init, Q_init, source_NMF_ind, n_iter=n_iter, fix_Q=True, verbose=verbose)
+        multinmf_conv_mu(
+                np.abs(X)**2, W_init, H_init, Q_init, source_NMF_ind, 
+                n_iter=n_iter, fix_Q=True, fix_W=fix_W, 
+                H_l1_reg=l1_reg, 
+                verbose=verbose)
 
     # Computation of the spatial source images
     Im = multinmf_recons_im(X, W_MU, H_MU, Q_MU, source_NMF_ind)

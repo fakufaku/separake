@@ -33,9 +33,9 @@ if __name__ == '__main__':
         raise ValueError('The speech samples should have the same sample rate as the simulation')
 
     # a 5 wall room
-    floorplan = np.array([[0, 0], [7, 0], [7, 5], [2,5], [0,3]]).T
-    room = pra.Room.from_corners(floorplan, fs=fs, absorption=0.15, max_order=max_order)
-    room.extrude(4.)  # add the third dimension
+    floorplan = np.array([[0, 0], [6, 0], [6, 5], [2,5], [0,3]]).T
+    room = pra.Room.from_corners(floorplan, fs=fs, absorption=0.4, max_order=max_order)
+    room.extrude(4., absorption=0.4)  # add the third dimension
 
     # add two sources
     room.add_source([2, 1.5, 1.8], signal=speech1)
@@ -59,7 +59,7 @@ if __name__ == '__main__':
 
 
     # run NMF
-    sep_sources = multinmf_conv_em_wrapper(room.mic_array.signals.T, partial_rirs, n_latent_var, n_iter=500)
+    sep_sources = multinmf_conv_em_wrapper(room.mic_array.signals.T, partial_rirs, n_latent_var, n_iter=100)
 
     # Plots
 
