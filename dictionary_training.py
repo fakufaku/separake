@@ -73,8 +73,6 @@ if __name__ == '__main__':
     except:
         raise ValueError('An environment variable ''TIMIT_PATH'' pointing to the TIMIT base location is needed.')
 
-    timit_path = "Documents/PhD/Dataset/TIMIT/TIMIT/"
-
     # Load the corpus, be patient
     cache_file = '.timit_corpus_cache.pickle'
     if os.path.exists(cache_file):
