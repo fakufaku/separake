@@ -229,6 +229,12 @@ def multinmf_conv_mu_wrapper(x, partial_rirs, n_latent_var, W_dict=None, n_iter=
 
     # squared mag partial rirs (n_bin, n_channel, n_src)
     Q_init = np.moveaxis(np.abs(partial_rirs)**2, [2], [0])
+    Q_init /= np.max(Q_init, axis=0)[None,:,:]
+
+    for i in range(n_channel):
+        for j in range(n_src):
+            W_init[:,source_NMF_ind[j]] /= np.sum(Q_init[:,i,j,None]*W_init[:,source_NMF_ind[j]], axis=0)[None,:]
+
 
     W_MU, H_MU, Q_MU, cost = \
         multinmf_conv_mu(
