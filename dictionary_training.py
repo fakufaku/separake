@@ -7,7 +7,10 @@ import pickle
 
 from sklearn.decomposition import NMF
 
-def nmf_train(training_set, n_latent_variables, n_iter=200, gamma=None, W=None, H=None):
+from multinmf_conv_em import multinmf_conv_em_wrapper
+
+
+def nmf_train(training_set, n_latent_variables, solver='mu', n_iter=200, gamma=None, W=None, H=None):
     '''
     NMF using the Itakura-Saito divergence and l1 regularization for sparse activations.
 
@@ -27,13 +30,16 @@ def nmf_train(training_set, n_latent_variables, n_iter=200, gamma=None, W=None, 
         Initialization for activations
     '''
 
-    model = NMF(n_components=n_latent_variables, solver='mu', beta_loss=0, max_iter=n_iter, init='custom')
+    if solver == 'mu':
+        model = NMF(n_components=n_latent_variables, solver=solver, beta_loss=0, max_iter=n_iter, init='custom')
+
     dictionary = []
 
     i = 1
     for speaker, spectrograms in training_set.items():
         # initialization
         n_bins, n_frames = spectrograms.shape
+        # TODO CHANGE THE SPECTROGRAM - WE ARE WITH THE EM NOW!
         pwr_psd = np.mean(spectrograms, axis=1)  # average spectral power
         W = (0.1 + np.abs(np.random.randn(n_bins, n_latent_variables))) * np.sqrt(pwr_psd[:,None])
         pwr_act = np.mean(spectrograms, axis=0)  # average activation power
@@ -41,7 +47,12 @@ def nmf_train(training_set, n_latent_variables, n_iter=200, gamma=None, W=None, 
 
         # train
         print('speaker', i)
-        dictionary.append(model.fit_transform(spectrograms, W=W, H=H))
+        if solver == 'em':
+            dictionary.append(
+                multinmf_conv_em_wrapper_dictionary_training(
+                    spectrograms, W, H, n_latent_var, n_iter))
+        if solver == 'mu':
+            dictionary.append(model.fit_transform(spectrograms, W=W, H=H))
         i += 1
 
     return np.concatenate(dictionary, axis=1)
@@ -53,6 +64,7 @@ if __name__ == '__main__':
     n_speakers = 25  # number of speakers per gender
     n_latent_variables = 10
     n_iter = 300  # number of iterations of NMF per speaker
+    solver = "em"
 
     # add an environment variable with the TIMIT location
     # e.g. /path/to/timit/TIMIT
@@ -98,9 +110,8 @@ if __name__ == '__main__':
 
     print('Train the dictionary...')
 
-    W_dictionary = nmf_train(training_set, n_latent_variables, n_iter=n_iter)
+    W_dictionary = nmf_train(training_set, n_latent_variables, solver, n_iter=n_iter)
 
     W_dictionary /= np.sum(W_dictionary, axis=0)[None,:]
 
-    np.savez('W_dictionary_sqmag.npz', speakers=training_set.keys(), W_dictionary=W_dictionary)
-
+    np.savez('W_dictionary_sqmag_'+solver+'.npz', speakers=training_set.keys(), W_dictionary=W_dictionary)
