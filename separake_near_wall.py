@@ -46,7 +46,7 @@ parameters = dict(
     speech_files = ['data/Speech/fq_sample1.wav', 'data/Speech/fq_sample2.wav',],
 
 
-    n_epochs = 50,  # number of trials for each parameters combination
+    n_epochs = 20,  # number of trials for each parameters combination
 
     # convolutive separation parameters
     dictionary_file = 'W_dictionary_sqmag_mu.npz',
@@ -69,14 +69,23 @@ arguments = list(itertools.product(partial_lengths, l1_reg, seeds))
 # serial mode, but not on the cluster
 use_mkl = False
 
-def parallel_loop(args, result_file=None,
-        stft_win_len=None, fs=None, room=None, src_signals=None, mic_signals=None,
-        single_sources=None, mu_n_latent_var=None, W_dict=None, mu_n_iter=None, base_dir=None, 
-        **kwargs):
+def parallel_loop(args):
     ''' This is the function that should be dumb parallel '''
-
-    # expand positional argument
+    # expand positional arguments
     partial_length, gamma, seed = args
+
+    # now the keyword arguments
+    result_file=parameters['result_file']
+    stft_win_len=parameters['stft_win_len']
+    fs=parameters['fs']
+    room=parameters['room']
+    src_signals=parameters['src_signals']
+    mic_signals=parameters['mic_signals']
+    single_sources=parameters['single_sources']
+    mu_n_latent_var=parameters['mu_n_latent_var']
+    W_dict=parameters['W_dict']
+    mu_n_iter=parameters['mu_n_iter']
+    base_dir=parameters['base_dir']
 
     # make sure base dir is in path
     import sys, os
@@ -176,6 +185,7 @@ if __name__ == '__main__':
         W_dict = np.load(parameters['dictionary_file'])['W_dictionary']
         mu_n_latent_var = W_dict.shape[1]  # set by dictionary
         print('Using dictionary with', mu_n_latent_var, 'latent variables')
+        parameters['mu_n_latent_var'] = mu_n_latent_var
         # save a copy of the dictionary to the sim directory
         copyfilename = data_dir_name + '/' + os.path.basename(parameters['dictionary_file'])
         shutil.copyfile(parameters['dictionary_file'], copyfilename)
@@ -247,6 +257,7 @@ if __name__ == '__main__':
     parameters['src_signals'] = src_signals
     parameters['mic_signals'] = mic_signals
     parameters['single_sources'] = single_sources
+    parameters['W_dict'] = W_dict
     parameters['room'] = room
 
     # There is the option to only run one loop for test
@@ -273,7 +284,7 @@ if __name__ == '__main__':
         NC = len(c.ids)
         print(NC, 'workers on the job')
         # Push the global config to the workers
-        c[:].push(dict(parameters=parameters, use_mkl=False, parallel_loop=parallel_loop))
+        c[:].push(dict(parameters=parameters, use_mkl=False))
 
         # use a load balanced view
         lbv = c.load_balanced_view()
@@ -283,8 +294,7 @@ if __name__ == '__main__':
         start_time = datetime.datetime.now()
 
         # dispatch to workers
-        pfunc = partial(parallel_loop, **parameters)
-        ar = lbv.map_async(pfunc, arguments)
+        ar = lbv.map_async(parallel_loop, arguments)
 
         # prepare the status line
         n_tasks = len(arguments)
