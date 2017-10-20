@@ -146,19 +146,7 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
         # compute log-likelihood
         xS = np.matmul(np.conj(Xb[:,:,None,:]), Inv_Sigma_x)
         xSx = np.real(np.matmul(xS, Xb[:,:,:,None]))
-        # xS = np.matmul(Xb[:,:,:,None], np.conj(Xb[:,:,None,:]))
-        # xSx1 = np.trace(np.matmul(xS, Inv_Sigma_x), axis1=, axis2=-1))
-        # xSx1 = np.trace(np.real(np.matmul(xS, Inv_Sigma_x)), axis1=2, axis2=3)
-        # print(xSx1.shape)
-        # xSx1 = np.zeros((F,N))
-        # for i in range(I):
-        #     for ii in range(I):
-        #         print(i, ii)
-        #         if i == ii:
-        #             xSx1 += np.real(Inv_Sigma_x[:,:,i,ii] * np.abs(Xb[:,:,ii])**2)
-        #         else:
-        #             xSx1 += np.real(Inv_Sigma_x[:,:,i,ii] * np.conj(Xb[:,:,i]) * Xb[:,:,ii])
-        # log_like1 = - np.sum( xSx1 + np.log(Det_Sigma_x * np.pi)) / (N * F)
+
         log_like = - np.sum( np.squeeze(xSx) + np.log(Det_Sigma_x * np.pi)) / (N * F)
 
         if iter > 1:
@@ -220,7 +208,7 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
             # IT IS IMPORTANT TO TAKE A REAL PART !!!!
             Vc[:,:,k] = np.abs(Gc_x_k) ** 2 + sigma_cc_k \
                      - np.real(
-                          np.matmul(Gc_k,bar_A[:,:,k,None]).squeeze()
+                          np.matmul(Gc_k, bar_A[:,:,k,None]).squeeze()
                        ) * sigma_cc_k
 
         # M-step: re-estimate
@@ -252,11 +240,9 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
             for i in range(I):
                 A[nonzero_f_ind,I-i-1,j] = A[nonzero_f_ind,I-i-1,j] / sign
 
-            A_scale = np.zeros(F)
-            for i in range(I):
-                A_scale += np.abs(A[:,i,j]) ** 2
-            A[:,:,j] = A[:,:,j] / np.sqrt(A_scale[:,np.newaxis])
-            W[:,source_NMF_ind[j]] = W[:, source_NMF_ind[j]] * A_scale[:,np.newaxis]
+            A_scale = np.sum(np.abs(A[:,:,j]) ** 2, axis = 1)
+            A[:,:,j] = A[:,:,j] / np.sqrt(A_scale[:,None])
+            W[:,source_NMF_ind[j]] = W[:, source_NMF_ind[j]] * A_scale[:,None]
 
         # Normalisation of W components
         w = np.sum(W, axis=0)

@@ -46,9 +46,9 @@ def example_usage_multinmf_conv_em():
     nsrc = 3
     stft_win_len = 2048
 
-    data_dir = 'data/Shannonsongs/'
-    results_dir = 'data/Shannonsongs/'
-    file_prefix = 'Shannonsongs_Sunrise_conv_sh_16bit'
+    data_dir = 'data/Speech/'
+    results_dir = 'data/Speech/'
+    file_prefix = '3sources_3channels'
 
     # Input time-frequency representation
     print('Input time-frequency representation')
@@ -56,6 +56,7 @@ def example_usage_multinmf_conv_em():
     x = x / (2**15)
     mix_nsamp = x.shape[0]
     nchan = x.shape[1]
+
 
     # TODO STFT
     window = pra.cosine(stft_win_len)
@@ -76,10 +77,10 @@ def example_usage_multinmf_conv_em():
     for j in range(nsrc):
         source_NMF_ind.append(np.arange(NMF_CompPerSrcNum) + j * NMF_CompPerSrcNum)
     mix_psd = 0.5 * (np.mean(np.abs(X[:,:,0])**2 + np.abs(X[:,:,1])**2, axis=1))
-    random_phases = random.randn(2, nsrc, nbin) + 1j * random.randn(2, nsrc, nbin)
+    random_phases = random.randn(nchan, nsrc, nbin) + 1j * random.randn(nchan, nsrc, nbin)
     random_phases /= np.abs(random_phases)
     A_init = (0.5 *
-            (1.9 * np.abs(random.randn(2, nsrc, nbin)) + 0.1 * np.ones((2, nsrc, nbin)))
+            (1.9 * np.abs(random.randn(nchan, nsrc, nbin)) + 0.1 * np.ones((nchan, nsrc, nbin)))
             * random_phases
             )
     # W is intialized so that its enegy follows mixture PSD
@@ -106,7 +107,7 @@ def example_usage_multinmf_conv_em():
     #  source_NMF_ind[idx] = item[0]-1
 
     W_EM, H_EM, Ae_EM, Sigma_b_EM, Se_EM, log_like_arr = \
-        multinmf_conv_em(X, W_init, H_init, A_init, Sigma_b_init, source_NMF_ind, iter_num=500)
+        multinmf_conv_em(X, W_init, H_init, A_init, Sigma_b_init, source_NMF_ind, iter_num=1000)
 
     Ae_EM = np.moveaxis(Ae_EM, [0], [2])
 
@@ -152,6 +153,10 @@ def example_usage_multinmf_conv_em():
             plot_ind = plot_ind + 1
     plt.tight_layout()
 
+    plt.show()
+
+    plt.figure()
+    plt.plot(log_like_arr)
     plt.show()
 
 if __name__ == '__main__':
