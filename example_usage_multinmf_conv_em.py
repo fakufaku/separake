@@ -46,9 +46,9 @@ def example_usage_multinmf_conv_em():
     nsrc = 3
     stft_win_len = 2048
 
-    data_dir = 'data/Speech/'
-    results_dir = 'data/Speech/'
-    file_prefix = '3sources_3channels'
+    data_dir = 'data/Shannonsongs/'
+    results_dir = 'data/Shannonsongs/'
+    file_prefix = 'Shannonsongs_Sunrise_conv_sh_16bit'
 
     # Input time-frequency representation
     print('Input time-frequency representation')
@@ -106,8 +106,8 @@ def example_usage_multinmf_conv_em():
     # for idx, item in enumerate(source_NMF_ind):
     #  source_NMF_ind[idx] = item[0]-1
 
-    W_init = np.load("W_dictionary_em.npy")
-    print(W_init.shape)
+    # W_init = np.load("W_dictionary_em.npy")
+    # print(W_init.shape)
 
     W_EM, H_EM, Ae_EM, Sigma_b_EM, Se_EM, log_like_arr = \
         multinmf_conv_em(X, W_init, H_init, A_init, Sigma_b_init, source_NMF_ind, iter_num=1000)
