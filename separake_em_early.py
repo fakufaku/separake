@@ -57,7 +57,6 @@ if __name__ == '__main__':
 
     wavfile.write('data/Speech/two_sources_mix.wav', fs, room.mic_array.signals.T)
 
-
     # run NMF
     sep_sources = multinmf_conv_em_wrapper(room.mic_array.signals.T, partial_rirs, n_latent_var, n_iter=500)
 
