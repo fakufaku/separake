@@ -316,7 +316,7 @@ def multinmf_conv_em_wrapper(x, partial_rirs, n_latent_var, n_iter=500, verbose 
     Q_init = np.moveaxis(np.abs(partial_rirs)**2, [2], [0])
 
     W_EM, H_EM, Ae_EM, Sigma_b_EM, Se_EM, log_like_arr = \
-        multinmf_conv_em(X, W_init, H_init, A_init, Sigma_b_init, source_NMF_ind, iter_num=500)
+        multinmf_conv_em(X, W_init, H_init, A_init, Sigma_b_init, source_NMF_ind, iter_num=n_iter)
 
     Ae_EM = np.moveaxis(Ae_EM, [0], [2])
 

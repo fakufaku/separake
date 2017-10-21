@@ -34,8 +34,8 @@ if __name__ == '__main__':
 
     # a 5 wall room
     floorplan = np.array([[0, 0], [7, 0], [7, 5], [2,5], [0,3]]).T
-    room = pra.Room.from_corners(floorplan, fs=fs, absorption=0.15, max_order=max_order)
-    room.extrude(4.)  # add the third dimension
+    room = pra.Room.from_corners(floorplan, fs=fs, absorption=0.4, max_order=max_order)
+    room.extrude(4., absorption=0.4)  # add the third dimension
 
     # add two sources
     room.add_source([2, 1.5, 1.8], signal=speech1)
