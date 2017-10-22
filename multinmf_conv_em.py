@@ -106,7 +106,7 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
 
     # MAIN LOOP
     for iter in range(iter_num):
-        print('EM iteration {} of {}\n'.format(iter, iter_num))
+        print('EM iteration {} of {}:'.format(iter, iter_num))
 
         # store parameters estimated on previous iteration
         np.copyto(W_prev, W)
@@ -115,7 +115,7 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
         np.copyto(Sigma_b_prev, Sigma_b)
 
         # E-step: compute expectations of natural suffitient statistics
-        print('   E-step\n')
+        print('   - E-step')
 
         # compute a priori source variances
         sigma_ss[:,] = 0
@@ -136,11 +136,11 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
         for i in range(I):
             for ii in range(i,I):
                 cc = A[:,i,:] * np.conj(A[:,ii,:])
-                Sigma_x[:,:,i,ii] = np.sum(cc[:,np.newaxis,:] * sigma_ss, axis=2)
+                Sigma_x[:,:,i,ii] = np.sum(cc[:,None,:] * sigma_ss, axis=2)
                 if i != ii:
                     Sigma_x[:,:,ii,i] = np.conj(Sigma_x[:,:,i,ii])
                 else:
-                    Sigma_x[:,:,i,ii] += Sigma_b[:,np.newaxis]
+                    Sigma_x[:,:,i,ii] += Sigma_b[:,None]
 
         # compute the inverse of Sigma_x matrix
         Det_Sigma_x = np.real(np.linalg.det(Sigma_x))
@@ -154,16 +154,16 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
 
         if iter > 1:
             log_like_diff = log_like - log_like_arr[iter - 1]
-            print('Log-likelihood: {}   Log-likelihood improvement: {}'.format(log_like, log_like_diff))
+            print('      Log-likelihood: {}\n      Log-likelihood improvement: {}'.format(log_like, log_like_diff))
         else:
-            print('Log-likelihood:', log_like)
+            print('      Log-likelihood:', log_like)
         log_like_arr[iter] = log_like
 
         for j in range(J):
             # compute S-Wiener gain
-            Gs[:,:,j,:] = ( np.matmul(np.conj(A[:,None,None,:,j]), Inv_Sigma_x)[:,:,:,0]\
-                            * sigma_ss[:,:,j,None])
-
+            Gs[:,:,j,:] = np.einsum('fti,ftiI->ftI',
+                            np.einsum('ft,fi->fti', sigma_ss[:,:,j], np.conj(A[:,:,j])),
+                            Inv_Sigma_x)
             # compute Gs_x
             Gs_x[:,:,j] = np.einsum('fti,fti->ft', Gs[:,:,j,:], Xb)
 
@@ -174,13 +174,12 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
         for j1 in range(J):
             # compute average Rss
             for j2 in range(J):
-                GsA = (np.matmul(Gs[:,:,j1,None,:], A[:,None,:,j2,None])).squeeze()
+                GsA = np.einsum('fti,fi->ft',Gs[:,:,j1,:],A[:,:,j2])
                 bar_Rss[:,j1,j2] = np.mean(
-                                    Gs_x[:,:,j1] * np.conj(Gs_x[:,:,j2])
-                                    - GsA * sigma_ss[:,:,j2],
+                        Gs_x[:,:,j1] * np.conj(Gs_x[:,:,j2])
+                        - GsA * sigma_ss[:,:,j2],
                                    axis=1)
             bar_Rss[:,j1,j1] = bar_Rss[:,j1,j1] + np.mean(sigma_ss[:,:,j1], axis=1)
-
 
         # compute average Rxx
         bar_Rxx = np.matmul(np.moveaxis(Xb, [-1], [-2]), np.conj(Xb)) / Xb.shape[1]
@@ -197,7 +196,7 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
 
         for k in range(K):
             # compute a priori component variances
-            sigma_cc_k = np.dot(W[:,k,np.newaxis], H[np.newaxis,k,:])
+            sigma_cc_k = np.dot(W[:,k,None], H[None,k,:])
 
             # compute C-Wiener gain
             Gc_k = ( np.einsum('fi,ftil->ftl', np.conj(bar_A[:,:,k]), Inv_Sigma_x)\
@@ -211,8 +210,9 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
             Vc[:,:,k] = np.abs(Gc_x_k) ** 2 + sigma_cc_k \
                         - np.real(np.einsum('fti,fi->ft',Gc_k, bar_A[:,:,k])) \
                             * sigma_cc_k
+
         # M-step: re-estimate
-        print('   M-step')
+        print('   - M-step')
 
         # re-estimate A
         for f in range(F):
@@ -231,9 +231,11 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
                         )
         # re-estimate W, and then H
         for k in range(K):
-            if update_w:
+            if update_w and k==0:
+                print("     - Update W")
                 W[:, k] = np.sum(Vc[:,:,k] / np.outer(np.ones(F), H[k, :]), axis=1) / N
-            if update_h:
+            if update_h and k==0:
+                print("     - Update H\n")
                 H[k, :] = np.sum(Vc[:,:,k] / np.outer(W[:,k], np.ones(N)), axis=0) / F
 
         for j in range(J):
@@ -264,7 +266,7 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
 
 
 def multinmf_conv_em_wrapper(x, partial_rirs, n_latent_var, n_iter=500, \
-        W_init=None, H_init=None, update_w=False, update_h=False, verbose = False):
+        W_init=None, H_init=None, update_w=True, update_h=True, verbose = False):
 
     '''
     A wrapper around multichannel nmf using EM updates to use with pyroormacoustcs.

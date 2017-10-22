@@ -62,7 +62,7 @@ if __name__ == '__main__':
 
     # run NMF
     sep_sources = multinmf_conv_em_wrapper(room.mic_array.signals.T, partial_rirs, n_latent_var, n_iter=100,
-                    W_init=dictionary_W)
+                    W_init=dictionary_W, update_w=False)
 
     # Plots
 

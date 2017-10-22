@@ -46,9 +46,9 @@ def example_usage_multinmf_conv_em():
     nsrc = 3
     stft_win_len = 2048
 
-    data_dir = 'data/Shannonsongs/'
-    results_dir = 'data/Shannonsongs/'
-    file_prefix = 'Shannonsongs_Sunrise_conv_sh_16bit'
+    data_dir = 'data/Speech/'
+    results_dir = 'data/Speech/'
+    file_prefix = '3sources_3channels'
 
     # Input time-frequency representation
     print('Input time-frequency representation')
@@ -76,7 +76,7 @@ def example_usage_multinmf_conv_em():
     source_NMF_ind = []
     for j in range(nsrc):
         source_NMF_ind.append(np.arange(NMF_CompPerSrcNum) + j * NMF_CompPerSrcNum)
-    mix_psd = 0.5 * (np.mean(np.abs(X[:,:,0])**2 + np.abs(X[:,:,1])**2, axis=1))
+    mix_psd = 0.5 * (np.mean(np.abs(np.sum(X**2, axis=2)), axis=1))
     random_phases = random.randn(nchan, nsrc, nbin) + 1j * random.randn(nchan, nsrc, nbin)
     random_phases /= np.abs(random_phases)
     A_init = (0.5 *
@@ -88,29 +88,18 @@ def example_usage_multinmf_conv_em():
             ( np.abs(random.randn(nbin,K)) + np.ones((nbin,K)) )
             * ( mix_psd[:,np.newaxis] * np.ones((1,K)) )
             )
+    # W_init = np.load("W_dictionary_em.npy")
+    # print(W_init.shape)
+    # K = W_init.shape[1]
     H_init = 0.5 * ( np.abs(random.randn(K,nfram)) + np.ones((K,nfram)) )
     Sigma_b_init = mix_psd / 100
-    print(Sigma_b_init.shape)
 
     # run 500 iterations of multichannel NMF EM algorithm (with annealing)
     A_init = np.moveaxis(A_init, [2], [0])
 
-    # from scipy.io import loadmat
-    # from_matlab = loadmat("/home/chutlhu/Documents/MATLAB/multi_nmf_toolbox/input.mat")
-    # X = np.array(from_matlab["X"])
-    # W_init = np.array(from_matlab["W_init"])
-    # H_init = np.array(from_matlab["H_init"])
-    # A_init = np.array(from_matlab["A_init"])
-    # Sigma_b_init = np.array(from_matlab["Sigma_b_init"]).squeeze()
-    # source_NMF_ind = from_matlab["source_NMF_ind"][0]
-    # for idx, item in enumerate(source_NMF_ind):
-    #  source_NMF_ind[idx] = item[0]-1
-
-    # W_init = np.load("W_dictionary_em.npy")
-    # print(W_init.shape)
 
     W_EM, H_EM, Ae_EM, Sigma_b_EM, Se_EM, log_like_arr = \
-        multinmf_conv_em(X, W_init, H_init, A_init, Sigma_b_init, source_NMF_ind, iter_num=1000)
+        multinmf_conv_em(X, W_init, H_init, A_init, Sigma_b_init, source_NMF_ind, iter_num=300)
 
     Ae_EM = np.moveaxis(Ae_EM, [0], [2])
 
