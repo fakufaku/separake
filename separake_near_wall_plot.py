@@ -94,8 +94,8 @@ if __name__ == "__main__":
                 'text.usetex': False,
                 })
     #pal = sns.cubehelix_palette(6, start=0.5, rot=-0.75, dark=0.25, light=.75, reverse=True, hue=0.9)
-    pal = sns.cubehelix_palette(6, start=0.5, rot=-0.5,dark=0.3, light=.75, reverse=True, hue=1.)
-    sns.set_palette(pal)
+    #pal = sns.cubehelix_palette(6, start=0.5, rot=-0.5,dark=0.3, light=.75, reverse=True, hue=1.)
+    #sns.set_palette(pal)
     #sns.set_palette('viridis')
 
     # plot the results

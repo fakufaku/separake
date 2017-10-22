@@ -36,17 +36,18 @@ parameters = dict(
 
     # room parameters
     max_order = 8,  # max image sources order in simulation
-    floorplan = [[0, 0], [6, 0], [6, 5], [2,5], [0,3]],
+    floorplan = [ [0, 6, 6, 2, 0],   # x-coordinates
+                  [0, 0, 5, 5, 3] ],  # y-coordinates
     height = 4.,
     absorption = 0.4,
-    mics_locs = [ [ 5.50, 5.50, 5.50 ],
-                   [ 4.53, 4.55, 4.57 ],
-                   [ 0.70, 0.70, 0.70 ] ],
+    mics_locs = [ [ 5.50, 5.50, 5.50 ],    # x-coordinates
+                  [ 4.53, 4.55, 4.67 ],    # y-coordinates
+                  [ 0.70, 0.70, 0.70 ] ],  # z-coordinates
 
-    speech_files = ['data/Speech/fq_sample1.wav', 'data/Speech/fq_sample2.wav',],
+    speech_files = ['data/Speech/fq_sample3.wav', 'data/Speech/fq_sample2.wav',],
 
-
-    n_epochs = 20,  # number of trials for each parameters combination
+    n_epochs = 1,         # number of trials for each parameters combination
+    n_src_locations = 10,  # number of different source locations to consider
 
     # convolutive separation parameters
     dictionary_file = 'W_dictionary_sqmag_mu.npz',
@@ -59,8 +60,9 @@ parameters = dict(
     )
 
 # parameters to sweep
-partial_lengths = list(range(0,11,2))  # number of image sources to use in the 'raking'
-l1_reg = [10,1,1e-1,1e-2,1e-3,1e-4] # only used with a dictionary, automatically set to zero otherwise
+
+partial_lengths = list(range(0,11,1))  # number of image sources to use in the 'raking'
+l1_reg = [1000, 100, 10, 1, 1e-1, 1e-2, 1e-3, 1e-4] # only used with a dictionary, automatically set to zero otherwise
 seeds = np.random.randint(2**32, size=parameters['n_epochs']).tolist()
 arguments = list(itertools.product(partial_lengths, l1_reg, seeds))
 
@@ -214,19 +216,25 @@ if __name__ == '__main__':
         speech_data.append(speech)
 
     # a 5 wall room
-    room = pra.Room.from_corners(np.array(parameters['floorplan']).T,
+    room = pra.Room.from_corners(np.array(parameters['floorplan']),
                                  fs=parameters['fs'], 
                                  absorption=parameters['absorption'],
                                  max_order=parameters['max_order'])
     # add the third dimension
     room.extrude(parameters['height'], absorption=parameters['absorption'])
 
-    # add two sources
-    K = 10  # number of sources
-    sources_locs = np.concatenate((
-            pra.linear_2D_array([2.05, 2.5], K, np.pi / 2, 0.5),
-            1.7 * np.ones((1, K))
-            ))
+    # generates sources in the room at random locations
+    fp = parameters['floorplan']
+    bbox = np.array(
+               [ [min(fp[0]), min(fp[1]), 0],
+                 [max(fp[0]), max(fp[1]), parameters['height']] ] ).T
+    K = parameters['n_src_locations']  # number of sources
+    sources_locs = np.zeros((3,0))
+    while sources_locs.shape[1] < K:
+        new_sources = np.random.rand(3, K - sources_locs.shape[1]) * (bbox[:,1] - bbox[:,0])[:,None] + bbox[:,0,None]
+        is_in_room = [room.is_inside(src) for src in new_sources.T]
+        sources_locs = np.concatenate([sources_locs, new_sources[:,is_in_room]], axis=1)
+
     source_array = pra.MicrophoneArray(sources_locs, parameters['fs'])
     room.add_microphone_array(source_array)
 
@@ -245,6 +253,9 @@ if __name__ == '__main__':
     mic_signals = reverse_simulate(room, src_signals)
 
     # simulate also the sources separately for comparison
+    max_length_speech = np.max([s.shape[0] for s in speech_data])
+    max_rir_length = np.max([ max([ len(rir) for rir in rirs ]) for rirs in room.rir ])
+    max_length = max_length_speech + max_rir_length - 1
     single_sources = []
     for i,s in enumerate(src_signals):
         if s is None:
@@ -254,6 +265,11 @@ if __name__ == '__main__':
         single_sources.append(reverse_simulate(room, feed, length=mic_signals.shape[1]))
     single_sources = np.swapaxes(np.array(single_sources), 1, 2)
 
+    import pdb
+    pdb.set_trace()
+
+
+    parameters['source_locations'] = sources_locs
     parameters['src_signals'] = src_signals
     parameters['mic_signals'] = mic_signals
     parameters['single_sources'] = single_sources
@@ -326,18 +342,3 @@ if __name__ == '__main__':
         print('Total actual processing time:', all_loops)
 
     print('Saved data to folder: ' + data_dir_name)
-
-    '''
-    # plot the results
-    plt.figure()
-    for i, metric in enumerate(['sdr', 'isr', 'sir', 'sar']):
-        plt.subplot(2,2,i+1)
-        for g in range(len(l1_reg)):
-            plt.plot(partial_lengths, scores[metric][:,g,:].mean(axis=-1))
-        plt.legend(l1_reg)
-        plt.xlabel('number of image microphones')
-        plt.ylabel(metric)
-
-    plt.tight_layout()
-    plt.show()
-    '''
