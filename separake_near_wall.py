@@ -40,12 +40,11 @@ parameters = dict(
                   [0, 0, 5, 5, 3] ],  # y-coordinates
     height = 4.,
     absorption = 0.4,
-    mics_locs = np.concatenate([
-        # planar circular array with three microphones and 30 cm inter-mic dist
-        # placed in bottom right corner of the room
-        pra.circular_2D_array([6-0.512, 0.512], 3, -np.pi / 4, 0.3 / np.sqrt(3)),
-        0.7 * np.ones((1,3)),],  # placed at height of 0.7 m
-        axis=0).tolist(),
+    # planar circular array with three microphones and 30 cm inter-mic dist
+    # placed in bottom right corner of the room
+    mics_locs = [[ 5.61047449,  5.53282877,  5.32069674],    # x-coordinates
+                 [ 0.38952551,  0.67930326,  0.46717123],    # y-coordinates
+                 [ 0.70000000,  0.70000000,  0.70000000] ],  # z-coordinates
 
     speech_files = ['data/Speech/fq_sample3.wav', 'data/Speech/fq_sample2.wav',],
 
@@ -83,11 +82,7 @@ src_locs_ind = list(combinations(range(parameters['n_src_locations']), n_src))
 partial_lengths = [-1,0,1,2,4,7]
 
 # only used with a dictionary, automatically set to zero otherwise
-<<<<<<< HEAD
-l1_reg = [100, 1e-1, 1e-4]
-=======
 l1_reg = [100, 1., 1e-2, 1e-4] 
->>>>>>> 6735d6bb7ef20636362ece5927d83faeaae3cab3
 
 # seed to enforce same random intialization for all run of the algorithm
 # under different parameters
