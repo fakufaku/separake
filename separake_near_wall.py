@@ -12,7 +12,7 @@ import json
 
 from multinmf_conv_mu import multinmf_conv_mu_wrapper
 from multinmf_conv_em import multinmf_conv_em_wrapper
-from utilities import partial_rir, reverse_simulate
+from utilities import partial_rir, reverse_simulate, reverse_simulate_all_single_sources
 from sim_tools import json_append
 
 from mir_eval.separation import bss_eval_images
@@ -69,11 +69,23 @@ parameters = dict(
 np.random.seed(parameters['master_seed'])
 
 # parameters to sweep
+#####################
+
+# the active source indices
 n_src = len(parameters['speech_files'])
-src_locs_ind = list(combinations(range(parameters['n_src_locations']), n_src))  # the active source indices
-partial_lengths = [0,1,2,4,7]  # number of image sources to use in the 'raking'
-l1_reg = [1000, 1e-1, 1e-4] # only used with a dictionary, automatically set to zero otherwise
+src_locs_ind = list(combinations(range(parameters['n_src_locations']), n_src))  
+
+# number of image sources to use in the 'raking', or -1 for anechoic conditions
+partial_lengths = [-1,0,1,2,4,7]  
+
+# only used with a dictionary, automatically set to zero otherwise
+l1_reg = [100, 1e-1, 1e-4] 
+
+# seed to enforce same random intialization for all run of the algorithm
+# under different parameters
 seeds = np.random.randint(2**32, size=parameters['n_epochs']).tolist()
+
+# cartesian products of all the arguments
 arguments = list(product(src_locs_ind, partial_lengths, l1_reg, seeds))
 
 # This is used for debugging.
@@ -83,7 +95,6 @@ use_mkl = False
 
 def parallel_loop(args):
     ''' This is the function that should be dumb parallel '''
-    global parameters
 
     # expand positional arguments
     src_locs_ind, partial_length, gamma, seed = args
@@ -95,6 +106,7 @@ def parallel_loop(args):
     room = parameters['room']
     partial_rirs = parameters['partial_rirs']
     single_sources = parameters['single_sources']
+    single_sources_anechoic = parameters['single_sources_anechoic']
     mu_n_latent_var = parameters['mu_n_latent_var']
     em_n_latent_var = parameters['em_n_latent_var']
     W_dict = parameters['W_dict']
@@ -123,14 +135,26 @@ def parallel_loop(args):
     except ImportError:
         pass
 
+    # select between echoic and anechoic signals
+    if partial_length >= 0:
+        clean_sources = single_sources
+    else:
+        # anechoic propagation
+        clean_sources = single_sources_anechoic
+
     # mix the sources
-    mic_signals = np.zeros(single_sources.shape[-2:])  # (n_samples, n_mics)
+    mic_signals = np.zeros(clean_sources.shape[-2:])  # (n_samples, n_mics)
     for speech_index, loc_index in enumerate(src_locs_ind):
-        mic_signals += single_sources[speech_index,loc_index,:,:]
+            mic_signals += clean_sources[speech_index,loc_index,:,:]
 
     # shape (n_mics, n_src, n_bins)
-    partial_rirs_sources = np.swapaxes(
-            partial_rirs[partial_length][src_locs_ind,:,:], 0, 1)
+    if partial_length >= 0:
+        partial_rirs_sources = np.swapaxes(
+                partial_rirs[partial_length][src_locs_ind,:,:], 0, 1)
+    else:
+        # in anechoic conditions, we have flat responses everywhere
+        partial_rirs_sources = np.swapaxes(
+                partial_rirs[0][src_locs_ind,:,:], 0, 1)
 
     if method == 'mu':
         # separate using MU
@@ -148,11 +172,11 @@ def parallel_loop(args):
         raise ValueError('Unknown algorithm {} requested'.format(method))
 
     # compute the metrics
-    n_samples = np.minimum(single_sources.shape[2], sep_sources.shape[1])
+    n_samples = np.minimum(clean_sources.shape[2], sep_sources.shape[1])
 
     reference_signals = []
     for speech_ind, loc_ind in enumerate(src_locs_ind):
-        reference_signals.append(single_sources[speech_ind,loc_ind,:n_samples,:]) 
+        reference_signals.append(clean_sources[speech_ind,loc_ind,:n_samples,:]) 
     reference_signals = np.array(reference_signals)
 
     ret = \
@@ -173,9 +197,6 @@ def parallel_loop(args):
     filename = result_file.format(os.getpid())
     json_append(filename, entry)
     
-    import pdb
-    pdb.set_trace()
-
     return entry
 
 
@@ -289,34 +310,34 @@ if __name__ == '__main__':
     source_array = pra.MicrophoneArray(sources_locs, parameters['fs'])
     room.add_microphone_array(source_array)
 
-
-    # compute the RIR between sources and microphones
+    # 1) We let the room be anechoic and simulate all
+    #    microphone signals
+    room.max_order = 0  # never reflect!
+    room.image_source_model()
     room.compute_rir()
+    single_sources_anechoic = reverse_simulate_all_single_sources(room, speech_data)
 
-    # compute partial rir
-    freqvec = np.fft.rfftfreq(parameters['stft_win_len'], 1 / room.fs)
-    partial_rirs = dict(zip(partial_lengths,
-        [partial_rir(room, L + 1, freqvec) for L in partial_lengths]))
+
+    # 2) Let the room have echoes and recompute all microphone signals
+    room.max_order = parameters['max_order']
+    room.image_source_model()
+    room.compute_rir()
 
     # simulate propagation of sources individually
     # mixing will be done in the simulation loop by simple addition
-    max_length_speech = np.max([s.shape[0] for s in speech_data])
-    max_length_rir = np.max([len(room.rir[i][j]) for i, j in product(range(n_src_locs), range(n_mics))])
-    n_samples = max_length_speech + max_length_rir - 1
-    single_sources = []
-    for sample in speech_data:
-        single_sources.append([])
-        for i in range(n_src_locs):
-            feed = [None] * n_src_locs
-            feed[i] = sample
-            single_sources[-1].append(reverse_simulate(room, feed, length=n_samples))
-    # final shape of single_sources after axes swap: (n_speech, n_src_locs, n_samples, n_mics_locs)
-    # the swap of axis is to make the shape compatible with bss_eval
-    single_sources = np.swapaxes(single_sources, 2, 3)
+    # shape of single_sources: (n_speech, n_src_locs, n_samples, n_mics_locs)
+    single_sources = reverse_simulate_all_single_sources(room, speech_data)
+
+    # compute partial rir
+    # (remove negative partial lengths corresponding to anechoic conditions)
+    freqvec = np.fft.rfftfreq(parameters['stft_win_len'], 1 / room.fs)
+    partial_rirs = dict(zip(partial_lengths,
+        [partial_rir(room, L + 1, freqvec) for L in partial_lengths if L >= 0]))
 
     parameters['partial_rirs'] = partial_rirs
     parameters['source_locations'] = sources_locs
     parameters['single_sources'] = single_sources
+    parameters['single_sources_anechoic'] = single_sources_anechoic
     parameters['W_dict'] = W_dict
     parameters['room'] = room
 

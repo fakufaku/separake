@@ -1,5 +1,6 @@
 import numpy as np
 import pyroomacoustics as pra
+from itertools import product
 
 # get the speed of sound from pyroomacoustics
 c = pra.constants.get('c')
@@ -45,6 +46,38 @@ def partial_rir(room, n, freqvec):
 
     return partial_rirs
 
+def reverse_simulate_all_single_sources(room, speech_data):
+    '''
+    Simulate playing each signal in speech_data at each possible source locations
+
+    Parameters
+    ----------
+    room: pyroomacoustics.Room
+        the room
+    speech_data: list of array_like
+        list containing all the speech samples to simulate
+
+    Returns
+    -------
+    An ndarray of shape (n_speech_data, n_src, n_samples, n_channel)
+    '''
+
+    n_src_locs = room.mic_array.R.shape[1]  # mics are sources
+    n_mics = len(room.sources)              # sources are mics
+
+    max_length_speech = np.max([s.shape[0] for s in speech_data])
+    max_length_rir = np.max([len(room.rir[i][j]) for i, j in product(range(n_src_locs), range(n_mics))])
+    n_samples = max_length_speech + max_length_rir - 1
+    single_sources = []
+    for sample in speech_data:
+        single_sources.append([])
+        for i in range(n_src_locs):
+            feed = [None] * n_src_locs
+            feed[i] = sample
+            single_sources[-1].append(reverse_simulate(room, feed, length=n_samples))
+    # final shape of single_sources after axes swap: (n_speech, n_src_locs, n_samples, n_mics_locs)
+    # the swap of axis is to make the shape compatible with bss_eval
+    return np.swapaxes(single_sources, 2, 3)
 
 def reverse_simulate(room, source_signals, delays=None, length=None):
     '''
