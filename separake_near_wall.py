@@ -41,16 +41,19 @@ parameters = dict(
                   [0, 0, 5, 5, 3] ],  # y-coordinates
     height = 4.,
     absorption = 0.4,
-    mics_locs = [ [ 5.50, 5.50, 5.50 ],    # x-coordinates
-                  [ 4.53, 4.55, 4.67 ],    # y-coordinates
-                  [ 0.70, 0.70, 0.70 ] ],  # z-coordinates
+    # planar circular array with three microphones and 30 cm inter-mic dist
+    # placed in bottom right corner of the room
+    mics_locs = [[ 5.61047449,  5.53282877,  5.32069674],    # x-coordinates
+                 [ 0.38952551,  0.67930326,  0.46717123],    # y-coordinates
+                 [ 0.70000000,  0.70000000,  0.70000000] ],  # z-coordinates
 
     speech_files = ['data/Speech/fq_sample3.wav', 'data/Speech/fq_sample2.wav',],
 
     master_seed = 0xDEADBEEF,  # seed of the random number generator
 
-    min_dist_src_mic = 2., # Impose a minimum distance of between sources and microphones [in meters]
-    n_src_locations = 10,  # number of different source locations to consider
+    dist_src_mic = [2.5, 4], # Put all sources in donut
+    min_dist_src_src = 1.,  # minimum distance between two sources
+    n_src_locations = 30,  # number of different source locations to consider
     n_epochs = 1,          # number of trials for each parameters combination
 
     # convolutive separation parameters
@@ -300,17 +303,25 @@ if __name__ == '__main__':
     n_src_locs = parameters['n_src_locations']  # number of sources
     sources_locs = np.zeros((3,0))
     while sources_locs.shape[1] < n_src_locs:
-        # new candidate locations in the bounding box
-        new_sources = np.random.rand(3, n_src_locs - sources_locs.shape[1]) * (bbox[:,1] - bbox[:,0])[:,None] + bbox[:,0,None]
+        # new candidate location in the bounding box
+        new_source = np.random.rand(3, 1) * (bbox[:,1] - bbox[:,0])[:,None] + bbox[:,0,None]
+        # check the source are in the room
+        is_in_room = room.is_inside(new_source[:,0])
 
-        # check the sources are in the room
-        is_in_room = [room.is_inside(src) for src in new_sources.T]
+        # check the source is not too close to the microphone
+        mic_dist = pra.distance(mics_locs, new_source).min()
+        distance_mic_ok = (parameters['dist_src_mic'][0] < mic_dist and
+                            mic_dist < parameters['dist_src_mic'][1])
 
-        # check the sources are not too close to the microphone
-        distance_ok = parameters['min_dist_src_mic'] < pra.distance(mics_locs, new_sources).min(axis=0)
+        select = is_in_room and distance_mic_ok
 
-        select = np.logical_and(is_in_room, distance_ok)
-        sources_locs = np.concatenate([sources_locs, new_sources[:,select]], axis=1)
+        if sources_locs.shape[1] > 0:
+            distance_src_ok = (parameters['min_dist_src_src']
+                                < pra.distance(sources_locs, new_source).min())
+            select = select and distance_src_ok
+
+        if select:
+            sources_locs = np.concatenate([sources_locs, new_source], axis=1)
 
     source_array = pra.MicrophoneArray(sources_locs, parameters['fs'])
     room.add_microphone_array(source_array)
@@ -321,7 +332,6 @@ if __name__ == '__main__':
     room.image_source_model()
     room.compute_rir()
     single_sources_anechoic = reverse_simulate_all_single_sources(room, speech_data)
-
 
     # 2) Let the room have echoes and recompute all microphone signals
     room.max_order = parameters['max_order']
