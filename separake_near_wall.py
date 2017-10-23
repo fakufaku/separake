@@ -83,7 +83,6 @@ use_mkl = False
 
 def parallel_loop(args):
     ''' This is the function that should be dumb parallel '''
-    global parameters
 
     # expand positional arguments
     src_locs_ind, partial_length, gamma, seed = args
@@ -173,9 +172,6 @@ def parallel_loop(args):
     filename = result_file.format(os.getpid())
     json_append(filename, entry)
     
-    import pdb
-    pdb.set_trace()
-
     return entry
 
 
@@ -381,6 +377,9 @@ if __name__ == '__main__':
             print(status_line.format(ar.progress, n_tasks, forecast), end='\r')
 
             time.sleep(1)
+
+        print('Show all output from nodes, if any:')
+        ar.display_outputs()
 
         all_loops = time.time() - then
         print('Total actual processing time:', all_loops)

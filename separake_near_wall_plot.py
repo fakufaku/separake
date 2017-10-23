@@ -62,12 +62,10 @@ if __name__ == "__main__":
         table = []
 
         for record in records:
-            table.append( [
-                record['partial_length'],
-                record['gamma'],
-                record['seed']
-                ] + [np.mean(record[m.lower()]) for m in metrics]
-                )
+            table.append(
+                    [ record['partial_length'], record['gamma'], record['seed'] ]
+                    + [np.mean(record[m.lower()]) for m in metrics]
+                    )
            
         # create a pandas frame
         print('Making PANDAS frame...')
@@ -82,27 +80,29 @@ if __name__ == "__main__":
     print('Plotting...')
 
     sns.set(style='whitegrid')
-    sns.plotting_context(context='poster', font_scale=2.)
-    pal = sns.cubehelix_palette(8, start=0.5, rot=-.75)
+    sns.plotting_context(context='paper', font_scale=1.)
 
     sns.set(style='whitegrid', context='paper', font_scale=1.2,
             rc={
                 'figure.figsize':(3.5,3.15), 
-                'lines.linewidth':2.,
+                'lines.linewidth':1.,
                 'font.family': 'sans-serif',
                 'font.sans-serif': [u'Helvetica'],
                 'text.usetex': False,
                 })
-    #pal = sns.cubehelix_palette(6, start=0.5, rot=-0.75, dark=0.25, light=.75, reverse=True, hue=0.9)
-    #pal = sns.cubehelix_palette(6, start=0.5, rot=-0.5,dark=0.3, light=.75, reverse=True, hue=1.)
-    #sns.set_palette(pal)
-    #sns.set_palette('viridis')
 
     # plot the results
     plt.figure()
     for i, metric in enumerate(metrics):
         ax = plt.subplot(2,2,i+1)
-        perf[metric].plot(ax=ax)
+        perf[metric].plot(ax=ax, legend=False)
+        if i == 3:
+            leg = plt.legend(perf[metric].columns, 
+                            title='$\gamma$',
+                            frameon=True, labelspacing=0.5, 
+                            framealpha=0.8, loc=6,
+                            bbox_to_anchor=[1.05, 1.2])
+            leg.get_frame().set_linewidth(0.0)
         plt.ylabel(metric)
         plt.xlabel('Number of echoes')
 
@@ -110,8 +110,8 @@ if __name__ == "__main__":
 
     plt.tight_layout(pad=0.5)
 
-    #plt.savefig('figures/experiment_snr_synthetic.pdf')
-    #plt.savefig('figures/experiment_snr_synthetic.png')
+    plt.savefig('figures/separake_near_wall_mu.pdf',
+            bbox_extra_artists=(leg,), bbox_inches='tight')
 
     if plot_flag:
         plt.show()
