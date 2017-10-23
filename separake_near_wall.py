@@ -19,7 +19,7 @@ from mir_eval.separation import bss_eval_images
 
 base_dir = os.path.abspath(os.path.split(__file__)[0])
 print('Base dir', base_dir)
-output_dir = "/data/results"
+output_dir = "/data/results/"
 
 if not os.path.exists(base_dir+output_dir):
     os.mkdir(base_dir+output_dir)
