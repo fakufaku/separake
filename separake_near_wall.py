@@ -19,12 +19,13 @@ from mir_eval.separation import bss_eval_images
 
 base_dir = os.path.abspath(os.path.split(__file__)[0])
 print('Base dir', base_dir)
+output_dir = "/data/results"
 
-if not os.path.exists('data'):
-    os.mkdir('data')
+if not os.path.exists(base_dir+output_dir):
+    os.mkdir(base_dir+output_dir)
 
 # output filename format. {} is replaced by date/time
-data_dir_format = base_dir + '/data/{timestamp}_near_wall_{method}'
+data_dir_format = base_dir + output_dir +'{timestamp}_near_wall_{method}'
 data_file_format = '/data_{}.json'  # The {} is replaced by node pid
 param_file_format = '/parameters.json'  # We store the parameters in a json file
 args_file_format = '/arguments.json'  # We store the arguments list in a json file
@@ -79,11 +80,7 @@ src_locs_ind = list(combinations(range(parameters['n_src_locations']), n_src))
 partial_lengths = [-1,0,1,2,4,7]
 
 # only used with a dictionary, automatically set to zero otherwise
-<<<<<<< HEAD
-l1_reg = [100, 1e-1, 1e-4]
-=======
-l1_reg = [100, 1., 1e-2, 1e-4] 
->>>>>>> 6735d6bb7ef20636362ece5927d83faeaae3cab3
+l1_reg = [100, 1., 1e-2, 1e-4]
 
 # seed to enforce same random intialization for all run of the algorithm
 # under different parameters
