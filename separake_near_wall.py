@@ -41,7 +41,7 @@ parameters = dict(
     height = 4.,
     absorption = 0.4,
     mics_locs = [ [ 5.50, 5.50, 5.50 ],    # x-coordinates
-                  [ 4.53, 4.55, 4.67 ],    # y-coordinates
+                  [ 4.53, 4.55, 4.57 ],    # y-coordinates
                   [ 0.70, 0.70, 0.70 ] ],  # z-coordinates
 
     speech_files = ['data/Speech/fq_sample3.wav', 'data/Speech/fq_sample2.wav',],
@@ -50,7 +50,7 @@ parameters = dict(
 
     min_dist_src_mic = 2., # Impose a minimum distance of between sources and microphones [in meters]
     n_src_locations = 10,  # number of different source locations to consider
-    n_epochs = 1,          # number of trials for each parameters combination
+    n_epochs = 2,          # number of trials for each parameters combination
 
     # convolutive separation parameters
     method = "mu",          # solving method: mu or em
@@ -76,10 +76,10 @@ n_src = len(parameters['speech_files'])
 src_locs_ind = list(combinations(range(parameters['n_src_locations']), n_src))  
 
 # number of image sources to use in the 'raking', or -1 for anechoic conditions
-partial_lengths = [-1,0,1,2,4,7]  
+partial_lengths = [-1,0,1,2,3,4,5, 6]  
 
 # only used with a dictionary, automatically set to zero otherwise
-l1_reg = [100, 1., 1e-2, 1e-4] 
+l1_reg = [100, 10, 1., 1e-1, 1e-2, 1e-3, 1e-4] 
 
 # seed to enforce same random intialization for all run of the algorithm
 # under different parameters
@@ -396,7 +396,7 @@ if __name__ == '__main__':
                 rate = ar.progress / ellapsed  # tasks per second
                 delta_finish_min = int(rate * n_remaining / 60) + 1
 
-                end_date = start_time + datetime.timedelta(minutes=delta_finish_min)
+                end_date = datetime.datetime.now() + datetime.timedelta(minutes=delta_finish_min)
                 forecast = end_date.strftime('%Y-%m-%d %H:%M:%S')
 
             print(status_line.format(ar.progress, n_tasks, forecast), end='\r')
