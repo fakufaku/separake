@@ -61,8 +61,11 @@ if __name__ == '__main__':
     dictionary_W = np.load("W_dictionary_em.npy")
 
     # run NMF
-    sep_sources = multinmf_conv_em_wrapper(room.mic_array.signals.T, partial_rirs, n_latent_var, n_iter=100,
-                    W_init=dictionary_W, update_w=False)
+    sep_sources = multinmf_conv_em_wrapper(
+                    room.mic_array.signals.T, partial_rirs,
+                    n_latent_var, n_iter=100,
+                    A_init=partial_rirs, W_init=dictionary_W,
+                    update_w=False)
 
     # Plots
 
