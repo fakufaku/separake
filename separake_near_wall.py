@@ -53,9 +53,9 @@ parameters = dict(
     n_epochs = 1,          # number of trials for each parameters combination
 
     # convolutive separation parameters
-    method = "mu",          # solving method: mu or em
-    dictionary_file = 'W_dictionary_sqmag_mu.npz', #or 'W_dictionary_em
-    em_n_iter = 100,        # number of iterations of MU algorithm
+    method = "em",          # solving method: mu or em
+    dictionary_file = 'W_dictionary_sqmag_mu.npz',
+    em_n_iter = 100,        # number of iterations of EM algorithm
     mu_n_iter = 200,        # number of iterations of MU algorithm
     stft_win_len = 2048,    # supposedly optimal at 16 kHz (Ozerov and Fevote 2010)
     use_dict = True,
@@ -73,13 +73,13 @@ np.random.seed(parameters['master_seed'])
 
 # the active source indices
 n_src = len(parameters['speech_files'])
-src_locs_ind = list(combinations(range(parameters['n_src_locations']), n_src))  
+src_locs_ind = list(combinations(range(parameters['n_src_locations']), n_src))
 
 # number of image sources to use in the 'raking', or -1 for anechoic conditions
-partial_lengths = [-1,0,1,2,4,7]  
+partial_lengths = [-1,0,1,2,4,7]
 
 # only used with a dictionary, automatically set to zero otherwise
-l1_reg = [100, 1e-1, 1e-4] 
+l1_reg = [100, 1e-1, 1e-4]
 
 # seed to enforce same random intialization for all run of the algorithm
 # under different parameters
@@ -123,8 +123,10 @@ def parallel_loop(args):
     import numpy as np
     from mir_eval.separation import bss_eval_images
     from multinmf_conv_mu import multinmf_conv_mu_wrapper
+    from multinmf_conv_em import multinmf_conv_em_wrapper
     from utilities import partial_rir
     from sim_tools import json_append
+
 
     try:
         import mkl as mkl_service
@@ -166,8 +168,10 @@ def parallel_loop(args):
         # separate using EM
         sep_sources = multinmf_conv_em_wrapper(
                 mic_signals, partial_rirs_sources,
-                em_n_latent_var, W_init=W_dict,
-                n_iter=em_n_iter, verbose=False)
+                em_n_latent_var, n_iter=em_n_iter,
+                A_init=partial_rirs_sources, W_init=W_dict,
+                update_a=False, update_w=False,
+                verbose=False)
     else:
         raise ValueError('Unknown algorithm {} requested'.format(method))
 
@@ -176,7 +180,7 @@ def parallel_loop(args):
 
     reference_signals = []
     for speech_ind, loc_ind in enumerate(src_locs_ind):
-        reference_signals.append(clean_sources[speech_ind,loc_ind,:n_samples,:]) 
+        reference_signals.append(clean_sources[speech_ind,loc_ind,:n_samples,:])
     reference_signals = np.array(reference_signals)
 
     ret = \
@@ -196,7 +200,7 @@ def parallel_loop(args):
 
     filename = result_file.format(os.getpid())
     json_append(filename, entry)
-    
+
     return entry
 
 
@@ -274,7 +278,7 @@ if __name__ == '__main__':
 
     # a 5 wall room
     room = pra.Room.from_corners(np.array(parameters['floorplan']),
-                                 fs=parameters['fs'], 
+                                 fs=parameters['fs'],
                                  absorption=parameters['absorption'],
                                  max_order=parameters['max_order'])
     # add the third dimension
