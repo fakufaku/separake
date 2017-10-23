@@ -403,6 +403,9 @@ if __name__ == '__main__':
 
             time.sleep(1)
 
+        print('Show all output from nodes, if any:')
+        ar.display_outputs()
+
         all_loops = time.time() - then
         print('Total actual processing time:', all_loops)
 
