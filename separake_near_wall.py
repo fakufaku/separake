@@ -3,15 +3,15 @@ from scipy.io import wavfile
 import matplotlib.pyplot as plt
 import pyroomacoustics as pra
 
-from functools import partial
 import datetime
-import itertools
+from itertools import product, combinations
 import shutil
 import time
 import os
 import json
 
 from multinmf_conv_mu import multinmf_conv_mu_wrapper
+from multinmf_conv_em import multinmf_conv_em_wrapper
 from utilities import partial_rir, reverse_simulate
 from sim_tools import json_append
 
@@ -24,7 +24,7 @@ if not os.path.exists('data'):
     os.mkdir('data')
 
 # output filename format. {} is replaced by date/time
-data_dir_format = base_dir + '/data/{}_mu_near_wall'
+data_dir_format = base_dir + '/data/{timestamp}_near_wall_{method}'
 data_file_format = '/data_{}.json'  # The {} is replaced by node pid
 param_file_format = '/parameters.json'  # We store the parameters in a json file
 args_file_format = '/arguments.json'  # We store the arguments list in a json file
@@ -46,8 +46,11 @@ parameters = dict(
 
     speech_files = ['data/Speech/fq_sample3.wav', 'data/Speech/fq_sample2.wav',],
 
-    n_epochs = 1,         # number of trials for each parameters combination
+    master_seed = 0xDEADBEEF,  # seed of the random number generator
+
+    min_dist_src_mic = 2., # Impose a minimum distance of between sources and microphones [in meters]
     n_src_locations = 10,  # number of different source locations to consider
+    n_epochs = 1,          # number of trials for each parameters combination
 
     # convolutive separation parameters
     method = "mu",          # solving method: mu or em
@@ -61,12 +64,17 @@ parameters = dict(
     base_dir = base_dir,
     )
 
-# parameters to sweep
+# initialize the random number generator
+# this makes the simulation repeatable
+np.random.seed(parameters['master_seed'])
 
-partial_lengths = list(range(0,11,1))  # number of image sources to use in the 'raking'
-l1_reg = [1000, 100, 10, 1, 1e-1, 1e-2, 1e-3, 1e-4] # only used with a dictionary, automatically set to zero otherwise
+# parameters to sweep
+n_src = len(parameters['speech_files'])
+src_locs_ind = list(combinations(range(parameters['n_src_locations']), n_src))  # the active source indices
+partial_lengths = [0,1,2,4,7]  # number of image sources to use in the 'raking'
+l1_reg = [1000, 1e-1, 1e-4] # only used with a dictionary, automatically set to zero otherwise
 seeds = np.random.randint(2**32, size=parameters['n_epochs']).tolist()
-arguments = list(itertools.product(partial_lengths, l1_reg, seeds))
+arguments = list(product(src_locs_ind, partial_lengths, l1_reg, seeds))
 
 # This is used for debugging.
 # we want to use mkl acceleration when running in
@@ -75,24 +83,25 @@ use_mkl = False
 
 def parallel_loop(args):
     ''' This is the function that should be dumb parallel '''
+    global parameters
+
     # expand positional arguments
-    partial_length, gamma, seed = args
+    src_locs_ind, partial_length, gamma, seed = args
 
     # now the keyword arguments
-    result_file=parameters['result_file']
-    stft_win_len=parameters['stft_win_len']
-    fs=parameters['fs']
-    room=parameters['room']
-    src_signals=parameters['src_signals']
-    mic_signals=parameters['mic_signals']
-    single_sources=parameters['single_sources']
-    mu_n_latent_var=parameters['mu_n_latent_var']
-    em_n_latent_var=parameters['em_n_latent_var']
-    W_dict=parameters['W_dict']
-    em_n_iter==parameters['em_n_iter']
-    mu_n_iter=parameters['mu_n_iter']
-    base_dir=parameters['base_dir']
-    method=parameters["method"]
+    result_file = parameters['result_file']
+    stft_win_len = parameters['stft_win_len']
+    fs = parameters['fs']
+    room = parameters['room']
+    partial_rirs = parameters['partial_rirs']
+    single_sources = parameters['single_sources']
+    mu_n_latent_var = parameters['mu_n_latent_var']
+    em_n_latent_var = parameters['em_n_latent_var']
+    W_dict = parameters['W_dict']
+    em_n_iter = parameters['em_n_iter']
+    mu_n_iter = parameters['mu_n_iter']
+    base_dir = parameters['base_dir']
+    method = parameters['method']
 
     # make sure base dir is in path
     import sys, os
@@ -114,37 +123,45 @@ def parallel_loop(args):
     except ImportError:
         pass
 
-    # compute partial rir
-    freqvec = np.fft.rfftfreq(stft_win_len, 1 / fs)
-    partial_rirs = partial_rir(room, partial_length + 1, freqvec)
+    # mix the sources
+    mic_signals = np.zeros(single_sources.shape[-2:])  # (n_samples, n_mics)
+    for speech_index, loc_index in enumerate(src_locs_ind):
+        mic_signals += single_sources[speech_index,loc_index,:,:]
 
+    # shape (n_mics, n_src, n_bins)
     partial_rirs_sources = np.swapaxes(
-            np.array( [pr for i,pr in enumerate(partial_rirs) if src_signals[i] is not None]),
-            0, 1)
+            partial_rirs[partial_length][src_locs_ind,:,:], 0, 1)
 
-    sep_sources = dict()
-
-    # separate using MU
-    if method is "mu":
+    if method == 'mu':
+        # separate using MU
         sep_sources = multinmf_conv_mu_wrapper(
-                mic_signals.T, partial_rirs_sources,
+                mic_signals, partial_rirs_sources,
                 mu_n_latent_var, W_dict=W_dict, l1_reg=gamma,
                 n_iter=mu_n_iter, verbose=False, random_seed=seed)
-
-    # separate using EM
-    if method is "em":
+    elif method == 'em':
+        # separate using EM
         sep_sources = multinmf_conv_em_wrapper(
-                mic_signals.T, partial_rirs_sources,
+                mic_signals, partial_rirs_sources,
                 em_n_latent_var, W_init=W_dict,
                 n_iter=em_n_iter, verbose=False)
+    else:
+        raise ValueError('Unknown algorithm {} requested'.format(method))
 
     # compute the metrics
-    n_samples = np.minimum(single_sources.shape[1], sep_sources.shape[1])
+    n_samples = np.minimum(single_sources.shape[2], sep_sources.shape[1])
+
+    reference_signals = []
+    for speech_ind, loc_ind in enumerate(src_locs_ind):
+        reference_signals.append(single_sources[speech_ind,loc_ind,:n_samples,:]) 
+    reference_signals = np.array(reference_signals)
+
     ret = \
-            bss_eval_images(single_sources[:,:n_samples,:], sep_sources[:,:n_samples,:])
+            bss_eval_images(reference_signals, sep_sources[:,:n_samples,:])
 
     entry = dict(
+            src_locs_ind=src_locs_ind,
             partial_length=partial_length,
+            algorithm=method,
             gamma=gamma,
             seed=seed,
             sdr=ret[0].tolist(),
@@ -155,6 +172,9 @@ def parallel_loop(args):
 
     filename = result_file.format(os.getpid())
     json_append(filename, entry)
+    
+    import pdb
+    pdb.set_trace()
 
     return entry
 
@@ -183,7 +203,7 @@ if __name__ == '__main__':
     # Save the result to a directory
     if data_dir_name is None:
         date = time.strftime("%Y%m%d-%H%M%S")
-        data_dir_name = data_dir_format.format(date)
+        data_dir_name = data_dir_format.format(timestamp=date,method=parameters['method'])
 
     # create directory if it doesn't exist
     try:
@@ -223,12 +243,13 @@ if __name__ == '__main__':
 
     # the speech samples
     speech_data = []
+    n_speech = len(parameters['speech_files'])
     for sp_fn in parameters['speech_files']:
-        r, speech = wavfile.read(sp_fn)
-        speech /= np.std(speech)
+        r, audio = wavfile.read(sp_fn)
+        audio /= np.std(audio)
         if r != parameters['fs']:
             raise ValueError('The speech samples should have the same sample rate as the simulation')
-        speech_data.append(speech)
+        speech_data.append(audio)
 
     # a 5 wall room
     room = pra.Room.from_corners(np.array(parameters['floorplan']),
@@ -238,55 +259,63 @@ if __name__ == '__main__':
     # add the third dimension
     room.extrude(parameters['height'], absorption=parameters['absorption'])
 
+    # add a few microphones
+    mics_locs = np.array(parameters['mics_locs'])
+    n_mics = mics_locs.shape[1]
+    for m in range(n_mics):
+        room.add_source(mics_locs[:,m])
+
     # generates sources in the room at random locations
+    # but ensure they are too close to microphones
     fp = parameters['floorplan']
     bbox = np.array(
                [ [min(fp[0]), min(fp[1]), 0],
                  [max(fp[0]), max(fp[1]), parameters['height']] ] ).T
-    K = parameters['n_src_locations']  # number of sources
+    n_src_locs = parameters['n_src_locations']  # number of sources
     sources_locs = np.zeros((3,0))
-    while sources_locs.shape[1] < K:
-        new_sources = np.random.rand(3, K - sources_locs.shape[1]) * (bbox[:,1] - bbox[:,0])[:,None] + bbox[:,0,None]
+    while sources_locs.shape[1] < n_src_locs:
+        # new candidate locations in the bounding box
+        new_sources = np.random.rand(3, n_src_locs - sources_locs.shape[1]) * (bbox[:,1] - bbox[:,0])[:,None] + bbox[:,0,None]
+
+        # check the sources are in the room
         is_in_room = [room.is_inside(src) for src in new_sources.T]
-        sources_locs = np.concatenate([sources_locs, new_sources[:,is_in_room]], axis=1)
+
+        # check the sources are not too close to the microphone
+        distance_ok = parameters['min_dist_src_mic'] < pra.distance(mics_locs, new_sources).min(axis=0)
+
+        select = np.logical_and(is_in_room, distance_ok)
+        sources_locs = np.concatenate([sources_locs, new_sources[:,select]], axis=1)
 
     source_array = pra.MicrophoneArray(sources_locs, parameters['fs'])
     room.add_microphone_array(source_array)
 
-    # now add a few microphones
-    mics_locs = np.array(parameters['mics_locs'])
-    for m in range(mics_locs.shape[1]):
-        room.add_source(mics_locs[:,m])
 
     # compute the RIR between sources and microphones
     room.compute_rir()
 
-    # simulate propagation with two sources
-    src_signals = [None] * K
-    src_signals[0] = speech_data[0]
-    src_signals[K-1] = speech_data[1]
-    mic_signals = reverse_simulate(room, src_signals)
+    # compute partial rir
+    freqvec = np.fft.rfftfreq(parameters['stft_win_len'], 1 / room.fs)
+    partial_rirs = dict(zip(partial_lengths,
+        [partial_rir(room, L + 1, freqvec) for L in partial_lengths]))
 
-    # simulate also the sources separately for comparison
+    # simulate propagation of sources individually
+    # mixing will be done in the simulation loop by simple addition
     max_length_speech = np.max([s.shape[0] for s in speech_data])
-    max_rir_length = np.max([ max([ len(rir) for rir in rirs ]) for rirs in room.rir ])
-    max_length = max_length_speech + max_rir_length - 1
+    max_length_rir = np.max([len(room.rir[i][j]) for i, j in product(range(n_src_locs), range(n_mics))])
+    n_samples = max_length_speech + max_length_rir - 1
     single_sources = []
-    for i,s in enumerate(src_signals):
-        if s is None:
-            continue
-        feed = [None] * K
-        feed[i] = s
-        single_sources.append(reverse_simulate(room, feed, length=mic_signals.shape[1]))
-    single_sources = np.swapaxes(np.array(single_sources), 1, 2)
+    for sample in speech_data:
+        single_sources.append([])
+        for i in range(n_src_locs):
+            feed = [None] * n_src_locs
+            feed[i] = sample
+            single_sources[-1].append(reverse_simulate(room, feed, length=n_samples))
+    # final shape of single_sources after axes swap: (n_speech, n_src_locs, n_samples, n_mics_locs)
+    # the swap of axis is to make the shape compatible with bss_eval
+    single_sources = np.swapaxes(single_sources, 2, 3)
 
-    import pdb
-    pdb.set_trace()
-
-
+    parameters['partial_rirs'] = partial_rirs
     parameters['source_locations'] = sources_locs
-    parameters['src_signals'] = src_signals
-    parameters['mic_signals'] = mic_signals
     parameters['single_sources'] = single_sources
     parameters['W_dict'] = W_dict
     parameters['room'] = room
@@ -303,7 +332,7 @@ if __name__ == '__main__':
         # Serial processing
         out = []
         for ag in arguments:
-            out.append(parallel_loop(ag, **parameters))
+            out.append(parallel_loop(ag))
 
     else:
         import ipyparallel as ip
