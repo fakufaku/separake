@@ -79,7 +79,11 @@ src_locs_ind = list(combinations(range(parameters['n_src_locations']), n_src))
 partial_lengths = [-1,0,1,2,4,7]
 
 # only used with a dictionary, automatically set to zero otherwise
+<<<<<<< HEAD
 l1_reg = [100, 1e-1, 1e-4]
+=======
+l1_reg = [100, 1., 1e-2, 1e-4] 
+>>>>>>> 6735d6bb7ef20636362ece5927d83faeaae3cab3
 
 # seed to enforce same random intialization for all run of the algorithm
 # under different parameters
@@ -369,7 +373,7 @@ if __name__ == '__main__':
         NC = len(c.ids)
         print(NC, 'workers on the job')
         # Push the global config to the workers
-        c[:].push(dict(parameters=parameters, use_mkl=False))
+        c[:].push(dict(parameters=parameters, use_mkl=False), block=True)
 
         # use a load balanced view
         lbv = c.load_balanced_view()
