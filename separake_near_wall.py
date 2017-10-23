@@ -50,12 +50,14 @@ parameters = dict(
     n_src_locations = 10,  # number of different source locations to consider
 
     # convolutive separation parameters
-    dictionary_file = 'W_dictionary_sqmag_mu.npz',
+    method = "mu",          # solving method: mu or em
+    dictionary_file = 'W_dictionary_sqmag_mu.npz', #or 'W_dictionary_em
+    em_n_iter = 100,        # number of iterations of MU algorithm
     mu_n_iter = 200,        # number of iterations of MU algorithm
     stft_win_len = 2048,    # supposedly optimal at 16 kHz (Ozerov and Fevote 2010)
     use_dict = True,
     mu_n_latent_var = 4,    # number of latent variables (ignored when dictionary is used)
-
+    em_n_latent_var = 4,    # number of latent variables (ignored when dictionary is used)
     base_dir = base_dir,
     )
 
@@ -66,7 +68,7 @@ l1_reg = [1000, 100, 10, 1, 1e-1, 1e-2, 1e-3, 1e-4] # only used with a dictionar
 seeds = np.random.randint(2**32, size=parameters['n_epochs']).tolist()
 arguments = list(itertools.product(partial_lengths, l1_reg, seeds))
 
-# This is used for debugging. 
+# This is used for debugging.
 # we want to use mkl acceleration when running in
 # serial mode, but not on the cluster
 use_mkl = False
@@ -85,9 +87,12 @@ def parallel_loop(args):
     mic_signals=parameters['mic_signals']
     single_sources=parameters['single_sources']
     mu_n_latent_var=parameters['mu_n_latent_var']
+    em_n_latent_var=parameters['em_n_latent_var']
     W_dict=parameters['W_dict']
+    em_n_iter==parameters['em_n_iter']
     mu_n_iter=parameters['mu_n_iter']
     base_dir=parameters['base_dir']
+    method=parameters["method"]
 
     # make sure base dir is in path
     import sys, os
@@ -102,7 +107,7 @@ def parallel_loop(args):
 
     try:
         import mkl as mkl_service
-        # for such parallel processing, it is better 
+        # for such parallel processing, it is better
         # to deactivate multithreading in mkl
         if not use_mkl:
             mkl_service.set_num_threads(1)
@@ -117,11 +122,21 @@ def parallel_loop(args):
             np.array( [pr for i,pr in enumerate(partial_rirs) if src_signals[i] is not None]),
             0, 1)
 
+    sep_sources = dict()
+
     # separate using MU
-    sep_sources = multinmf_conv_mu_wrapper(
-            mic_signals.T, partial_rirs_sources, 
-            mu_n_latent_var, W_dict=W_dict, l1_reg=gamma, 
-            n_iter=mu_n_iter, verbose=False, random_seed=seed)
+    if method is "mu":
+        sep_sources = multinmf_conv_mu_wrapper(
+                mic_signals.T, partial_rirs_sources,
+                mu_n_latent_var, W_dict=W_dict, l1_reg=gamma,
+                n_iter=mu_n_iter, verbose=False, random_seed=seed)
+
+    # separate using EM
+    if method is "em":
+        sep_sources = multinmf_conv_em_wrapper(
+                mic_signals.T, partial_rirs_sources,
+                em_n_latent_var, W_init=W_dict,
+                n_iter=em_n_iter, verbose=False)
 
     # compute the metrics
     n_samples = np.minimum(single_sources.shape[1], sep_sources.shape[1])
@@ -164,7 +179,7 @@ if __name__ == '__main__':
     test_flag = args.test
     serial_flag = args.serial
     data_dir_name = None
-    
+
     # Save the result to a directory
     if data_dir_name is None:
         date = time.strftime("%Y%m%d-%H%M%S")

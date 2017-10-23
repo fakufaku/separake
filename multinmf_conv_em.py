@@ -4,7 +4,8 @@ import numpy.random as random
 import pyroomacoustics as pra
 from multinmf_recons_im import multinmf_recons_im
 
-def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimAnneal_flag=1, Sigma_b_Upd_flag=False):
+def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
+        SimAnneal_flag=1, Sigma_b_Upd_flag=False, update_w=True, update_h=True):
 
     # [W,H,A,Sigma_b,S,log_like_arr] = ...
     #    multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num, SimAnneal_flag, Sigma_b_Upd_flag);
@@ -63,6 +64,8 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
     K = W0.shape[1]
     J = len(source_NMF_ind)
 
+    print(F, N, I, J, K)
+
     # if I != 2:
     #     raise ValueError('Multi_NMF_EM_conv: number of channels must be 2')
 
@@ -103,7 +106,7 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
 
     # MAIN LOOP
     for iter in range(iter_num):
-        print('EM iteration {} of {}\n'.format(iter, iter_num))
+        print('EM iteration {} of {}:'.format(iter, iter_num))
 
         # store parameters estimated on previous iteration
         np.copyto(W_prev, W)
@@ -112,7 +115,7 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
         np.copyto(Sigma_b_prev, Sigma_b)
 
         # E-step: compute expectations of natural suffitient statistics
-        print('   E-step\n')
+        print('   - E-step')
 
         # compute a priori source variances
         sigma_ss[:,] = 0
@@ -133,11 +136,11 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
         for i in range(I):
             for ii in range(i,I):
                 cc = A[:,i,:] * np.conj(A[:,ii,:])
-                Sigma_x[:,:,i,ii] = np.sum(cc[:,np.newaxis,:] * sigma_ss, axis=2)
+                Sigma_x[:,:,i,ii] = np.sum(cc[:,None,:] * sigma_ss, axis=2)
                 if i != ii:
                     Sigma_x[:,:,ii,i] = np.conj(Sigma_x[:,:,i,ii])
                 else:
-                    Sigma_x[:,:,i,ii] += Sigma_b[:,np.newaxis]
+                    Sigma_x[:,:,i,ii] += Sigma_b[:,None]
 
         # compute the inverse of Sigma_x matrix
         Det_Sigma_x = np.real(np.linalg.det(Sigma_x))
@@ -151,16 +154,16 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
 
         if iter > 1:
             log_like_diff = log_like - log_like_arr[iter - 1]
-            print('Log-likelihood: {}   Log-likelihood improvement: {}'.format(log_like, log_like_diff))
+            print('      Log-likelihood: {}\n      Log-likelihood improvement: {}'.format(log_like, log_like_diff))
         else:
-            print('Log-likelihood:', log_like)
+            print('      Log-likelihood:', log_like)
         log_like_arr[iter] = log_like
 
         for j in range(J):
             # compute S-Wiener gain
-            Gs[:,:,j,:] = ( np.matmul(np.conj(A[:,None,None,:,j]), Inv_Sigma_x).squeeze()\
-                             * sigma_ss[:,:,j,None])
-
+            Gs[:,:,j,:] = np.einsum('fti,ftiI->ftI',
+                            np.einsum('ft,fi->fti', sigma_ss[:,:,j], np.conj(A[:,:,j])),
+                            Inv_Sigma_x)
             # compute Gs_x
             Gs_x[:,:,j] = np.einsum('fti,fti->ft', Gs[:,:,j,:], Xb)
 
@@ -171,13 +174,12 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
         for j1 in range(J):
             # compute average Rss
             for j2 in range(J):
-                GsA = (np.matmul(Gs[:,:,j1,None,:], A[:,None,:,j2,None])).squeeze()
+                GsA = np.einsum('fti,fi->ft',Gs[:,:,j1,:],A[:,:,j2])
                 bar_Rss[:,j1,j2] = np.mean(
-                                    Gs_x[:,:,j1] * np.conj(Gs_x[:,:,j2])
-                                    - GsA * sigma_ss[:,:,j2],
+                        Gs_x[:,:,j1] * np.conj(Gs_x[:,:,j2])
+                        - GsA * sigma_ss[:,:,j2],
                                    axis=1)
             bar_Rss[:,j1,j1] = bar_Rss[:,j1,j1] + np.mean(sigma_ss[:,:,j1], axis=1)
-
 
         # compute average Rxx
         bar_Rxx = np.matmul(np.moveaxis(Xb, [-1], [-2]), np.conj(Xb)) / Xb.shape[1]
@@ -194,25 +196,23 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
 
         for k in range(K):
             # compute a priori component variances
-            sigma_cc_k = np.dot(W[:,k,np.newaxis], H[np.newaxis,k,:])
+            sigma_cc_k = np.dot(W[:,k,None], H[None,k,:])
 
             # compute C-Wiener gain
-            Gc_k = ( np.matmul(np.conj(bar_A[:,None,None,:,k]), Inv_Sigma_x).squeeze()\
+            Gc_k = ( np.einsum('fi,ftil->ftl', np.conj(bar_A[:,:,k]), Inv_Sigma_x)\
                  * sigma_cc_k[:,:,None])
 
             # compute Gc_x
             Gc_x_k = np.einsum('fni,fni->fn', Gc_k, Xb)
 
-
             # compute components sufficient natural statistics
             # IT IS IMPORTANT TO TAKE A REAL PART !!!!
             Vc[:,:,k] = np.abs(Gc_x_k) ** 2 + sigma_cc_k \
-                     - np.real(
-                          np.matmul(Gc_k, bar_A[:,:,k,None]).squeeze()
-                       ) * sigma_cc_k
+                        - np.real(np.einsum('fti,fi->ft',Gc_k, bar_A[:,:,k])) \
+                            * sigma_cc_k
 
         # M-step: re-estimate
-        print('   M-step')
+        print('   - M-step')
 
         # re-estimate A
         for f in range(F):
@@ -231,8 +231,12 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
                         )
         # re-estimate W, and then H
         for k in range(K):
-            W[:, k] = np.sum(Vc[:,:,k] / np.outer(np.ones(F), H[k, :]), axis=1) / N
-            H[k, :] = np.sum(Vc[:,:,k] / np.outer(W[:,k], np.ones(N)), axis=0) / F
+            if update_w and k==0:
+                print("     - Update W")
+                W[:, k] = np.sum(Vc[:,:,k] / np.outer(np.ones(F), H[k, :]), axis=1) / N
+            if update_h and k==0:
+                print("     - Update H\n")
+                H[k, :] = np.sum(Vc[:,:,k] / np.outer(W[:,k], np.ones(N)), axis=0) / F
 
         for j in range(J):
             nonzero_f_ind = np.where(A[:,0,j] != 0)[0]
@@ -261,7 +265,9 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100, SimA
     return W, H, A, Sigma_b, S, log_like_arr
 
 
-def multinmf_conv_em_wrapper(x, partial_rirs, n_latent_var, n_iter=500, verbose = False):
+def multinmf_conv_em_wrapper(x, partial_rirs, n_latent_var, n_iter=500, \
+        W_init=None, H_init=None, update_w=True, update_h=True, verbose = False):
+
     '''
     A wrapper around multichannel nmf using EM updates to use with pyroormacoustcs.
     Performs STFT and ensures all signals are the correct shape.
@@ -269,54 +275,62 @@ def multinmf_conv_em_wrapper(x, partial_rirs, n_latent_var, n_iter=500, verbose 
     Parameters
     ----------
     x: ndarray
-        (n_samples x n_channel) array of time domain samples
+        (n_samples x n_chan) array of time domain samples
     partial_rirs: ndarray
-        (n_channel x n_src x n_bins) array of partial TF
+        (n_chan x n_src x n_bins) array of partial TF
     n_latent_var: int
         number of latent variables in the NMF
     '''
 
-    n_channel = x.shape[1]
+    n_chan = x.shape[1]
     n_src = partial_rirs.shape[1]
     stft_win_len = 2 * (partial_rirs.shape[2] - 1)
 
     # STFT
     window = np.sqrt(pra.cosine(stft_win_len))  # use sqrt because of synthesis
-    # X is (n_channel, n_frame, n_bin)
+    # X is (n_chan, n_frame, n_bin)
     X = np.array(
-            [pra.stft(x[:,ch], stft_win_len, stft_win_len // 2, win=window, transform=np.fft.rfft) for ch in range(n_channel)]
+            [pra.stft(x[:,ch], stft_win_len, stft_win_len // 2, win=window, transform=np.fft.rfft) for ch in range(n_chan)]
             )
-    # move axes to match Ozerov's order (n_bin, n_frame, n_channel)
+    # move axes to match Ozerov's order (n_bin, n_frame, n_chan)
     X = np.moveaxis(X, [0,1,2], [2,1,0])
     n_bin = X.shape[0]
     n_frame = X.shape[1]
 
+    if W_init is not None:
+        K = W_init.shape[-1]
+    else:
+        K = n_latent_var * n_src
+
     # Random initialization of multichannel NMF parameters
-    K = n_latent_var * n_src
     source_NMF_ind = []
     for j in range(n_src):
         source_NMF_ind = np.reshape(np.arange(n_latent_var * n_src, dtype=np.int), (n_src,-1))
 
-    mix_psd = 0.5 * (np.mean(np.abs(X[:,:,0])**2 + np.abs(X[:,:,1])**2, axis=1))
+    mix_psd = 0.5 * (np.mean(np.sum(np.abs(X)**2, axis=2), axis=1))
     A_init = (0.5 *
-                ( 1.9 * np.abs(random.randn(n_bin, n_channel, n_src))       \
-                + 0.1 * np.ones((n_bin, n_channel, n_src))                  \
-                ) * np.sign( random.randn(n_bin, n_channel, n_src)          \
-                            + 1j * random.randn(n_bin, n_channel, n_src))  \
+                ( 1.9 * np.abs(random.randn(n_bin, n_chan, n_src))       \
+                + 0.1 * np.ones((n_bin, n_chan, n_src))                  \
+                ) * np.sign( random.randn(n_bin, n_chan, n_src)          \
+                            + 1j * random.randn(n_bin, n_chan, n_src))  \
             )
     # W is intialized so that its enegy follows mixture PSD
-    W_init = 0.5 * (
-            ( np.abs(np.random.randn(n_bin,K)) + np.ones((n_bin,K)) )
-            * ( mix_psd[:,np.newaxis] * np.ones((1,K)) )
-            )
-    H_init = 0.5 * ( np.abs(np.random.randn(K,n_frame)) + np.ones((K,n_frame)) )
+    if W_init is None:
+        W_init = 0.5 * (
+                ( np.abs(np.random.randn(n_bin,K)) + np.ones((n_bin,K)) )
+                * ( mix_psd[:,np.newaxis] * np.ones((1,K)) )
+                )
+    if H_init is None:
+        H_init = 0.5 * ( np.abs(np.random.randn(K,n_frame)) + np.ones((K,n_frame)) )
+
     Sigma_b_init = mix_psd / 100
 
-    # squared mag partial rirs (n_bin, n_channel, n_src)
+    # squared mag partial rirs (n_bin, n_chan, n_src)
     Q_init = np.moveaxis(np.abs(partial_rirs)**2, [2], [0])
 
     W_EM, H_EM, Ae_EM, Sigma_b_EM, Se_EM, log_like_arr = \
-        multinmf_conv_em(X, W_init, H_init, A_init, Sigma_b_init, source_NMF_ind, iter_num=n_iter)
+        multinmf_conv_em(X, W_init, H_init, A_init, Sigma_b_init, source_NMF_ind,
+            iter_num=n_iter, update_w=update_w, update_h=update_h)
 
     Ae_EM = np.moveaxis(Ae_EM, [0], [2])
 
@@ -332,7 +346,7 @@ def multinmf_conv_em_wrapper(x, partial_rirs, n_latent_var, n_iter=500, verbose 
     for j in range(n_src):
         # channel-wise istft with synthesis window
         ie_MU = []
-        for ch in range(n_channel):
+        for ch in range(n_chan):
             ie_MU.append(
                     pra.istft(Im[:,:,j,ch].T, stft_win_len, stft_win_len // 2, win=window, transform=np.fft.irfft)
                     )
@@ -342,7 +356,7 @@ def multinmf_conv_em_wrapper(x, partial_rirs, n_latent_var, n_iter=500, verbose 
     return np.array(sep_sources)
 
 
-def multinmf_conv_em_wrapper_dictionary_training(X, W, H, n_latent_var, n_iter=500):
+def multinmf_conv_em_dictionary_training(X, n_latent_var, n_iter):
     '''
     A wrapper around multichannel nmf using EM updates to use with pyroormacoustcs.
     for training dictionary
@@ -350,7 +364,7 @@ def multinmf_conv_em_wrapper_dictionary_training(X, W, H, n_latent_var, n_iter=5
     Parameters
     ----------
     X: ndarray
-        (n_samples x n_channel) array of time domain samples
+        (n_samples x n_chan) array of time domain samples
     W: ndarray
         (n_samples x n_components)
     H: ndarray
@@ -365,18 +379,26 @@ def multinmf_conv_em_wrapper_dictionary_training(X, W, H, n_latent_var, n_iter=5
     n_bin = X.shape[0]
     n_frame = X.shape[1]
 
+    try:
+        n_chan = X.shape[2]
+    except:
+        n_chan = 1;
+        X = X[:,:,None]
+
     # Random initialization of multichannel NMF parameters
     K = n_latent_var * n_src
     source_NMF_ind = []
     for j in range(n_src):
         source_NMF_ind = np.reshape(np.arange(n_latent_var * n_src, dtype=np.int), (n_src,-1))
 
-    mix_psd = 0.5 * (np.mean(np.abs(X[:,:,0])**2 + np.abs(X[:,:,1])**2, axis=1))
+    mix_psd = 0.5 * (np.mean(
+                np.sum(np.abs(X)**2, axis=2),
+                axis=1))
     A_init = (0.5 *
-                ( 1.9 * np.abs(random.randn(n_bin, n_channel, n_src))       \
-                + 0.1 * np.ones((n_bin, n_channel, n_src))                  \
-                ) * np.sign( random.randn(n_bin, n_channel, n_src)          \
-                            + 1j * random.randn(n_bin, n_channel, n_src))  \
+                ( 1.9 * np.abs(random.randn(n_bin, n_chan, n_src))       \
+                + 0.1 * np.ones((n_bin, n_chan, n_src))                  \
+                ) * np.sign( random.randn(n_bin, n_chan, n_src)          \
+                            + 1j * random.randn(n_bin, n_chan, n_src))  \
             )
     # W is intialized so that its enegy follows mixture PSD
     W_init = 0.5 * (
@@ -386,10 +408,7 @@ def multinmf_conv_em_wrapper_dictionary_training(X, W, H, n_latent_var, n_iter=5
     H_init = 0.5 * ( np.abs(np.random.randn(K,n_frame)) + np.ones((K,n_frame)) )
     Sigma_b_init = mix_psd / 100
 
-    # squared mag partial rirs (n_bin, n_channel, n_src)
-    Q_init = np.moveaxis(np.abs(partial_rirs)**2, [2], [0])
-
     W_EM, H_EM, Ae_EM, Sigma_b_EM, Se_EM, log_like_arr = \
-        multinmf_conv_em(X, W_init, H_init, A_init, Sigma_b_init, source_NMF_ind, iter_num=500)
+        multinmf_conv_em(X, W_init, H_init, A_init, Sigma_b_init, source_NMF_ind, iter_num=n_iter)
 
-    return H_EM
+    return W_EM

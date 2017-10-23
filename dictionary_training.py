@@ -7,7 +7,7 @@ import pickle
 
 from sklearn.decomposition import NMF
 
-from multinmf_conv_em import multinmf_conv_em_wrapper
+from multinmf_conv_em import multinmf_conv_em_dictionary_training
 
 
 def nmf_train(training_set, n_latent_variables, solver='mu', n_iter=200, gamma=None, W=None, H=None):
@@ -36,25 +36,28 @@ def nmf_train(training_set, n_latent_variables, solver='mu', n_iter=200, gamma=N
     dictionary = []
 
     i = 1
+    n_items = len(training_set)
     for speaker, spectrograms in training_set.items():
-        # initialization
-        n_bins, n_frames = spectrograms.shape
-        # TODO CHANGE THE SPECTROGRAM - WE ARE WITH THE EM NOW!
-        pwr_psd = np.mean(spectrograms, axis=1)  # average spectral power
-        W = (0.1 + np.abs(np.random.randn(n_bins, n_latent_variables))) * np.sqrt(pwr_psd[:,None])
-        pwr_act = np.mean(spectrograms, axis=0)  # average activation power
-        H = (0.1 + np.abs(np.random.randn(n_latent_variables, n_frames))) * np.sqrt(pwr_act[None,:])
-
-        # train
-        print('speaker', i)
+        print('speaker %d/%d'%(i,n_items))
         if solver == 'em':
+            # for EM spectrogram is actually the STFT of X
+            # initialization is alreay in the method
             dictionary.append(
-                multinmf_conv_em_wrapper_dictionary_training(
-                    spectrograms, W, H, n_latent_var, n_iter))
-        if solver == 'mu':
-            dictionary.append(model.fit_transform(spectrograms, W=W, H=H))
-        i += 1
+                multinmf_conv_em_dictionary_training(
+                    spectrograms, n_latent_variables, n_iter))
 
+        if solver == "mu":
+            # initialization
+            n_bins, n_frames = spectrograms.shape
+            pwr_psd = np.mean(spectrograms, axis=1)  # average spectral power
+            W = (0.1 + np.abs(np.random.randn(n_bins, n_latent_variables))) * np.sqrt(pwr_psd[:,None])
+            pwr_act = np.mean(spectrograms, axis=0)  # average activation power
+            H = (0.1 + np.abs(np.random.randn(n_latent_variables, n_frames))) * np.sqrt(pwr_act[None,:])
+
+            # train
+            dictionary.append(model.fit_transform(spectrograms, W=W, H=H))
+
+        i += 1
     return np.concatenate(dictionary, axis=1)
 
 
@@ -80,7 +83,6 @@ if __name__ == '__main__':
         with open(cache_file, 'rb') as f:
             corpus = pickle.load(f)
     else:
-
         print('Load TIMIT corpus...')
         corpus = pra.TimitCorpus(timit_path)
         corpus.build_corpus()
@@ -105,13 +107,20 @@ if __name__ == '__main__':
         training_set_sentences = filter(lambda x: x.speaker == speaker, corpus.sentence_corpus['TRAIN'])
         # X is (n_sentences, n_channel, n_frame)
         X = [pra.stft(sentence.samples, stft_win_len, stft_win_len // 2, win=window, transform=np.fft.rfft).T for sentence in training_set_sentences]
-        # Dalia says the magnitude works better...
-        training_set[speaker] = np.concatenate([np.abs(spectrogram)**2 for spectrogram in X], axis=1)
+        if solver == "mu":
+            # Dalia says the magnitude works better...
+            training_set[speaker] = np.concatenate([np.abs(spectrogram)**2 for spectrogram in X], axis=1)
+        if solver == "em":
+            # With EM we use directly the STFT representation
+            training_set[speaker] = np.concatenate(X, axis=1)
 
     print('Train the dictionary...')
 
     W_dictionary = nmf_train(training_set, n_latent_variables, solver, n_iter=n_iter)
-
     W_dictionary /= np.sum(W_dictionary, axis=0)[None,:]
-
-    np.savez('W_dictionary_sqmag_'+solver+'.npz', speakers=training_set.keys(), W_dictionary=W_dictionary)
+    if solver == "mu":
+        np.savez('W_dictionary_sqmag_'+solver+'.npz', speakers=training_set.keys(), W_dictionary=W_dictionary)
+    if solver == "em":
+        np.save('W_dictionary_'+solver+'.npz', W_dictionary)
+        np.save('Training_set_keys_'+solver+'.npz', training_set.keys())
+        np.savez('W_dictionary_'+solver+'.npz', speakers=training_set.keys(), W_dictionary=W_dictionary)
