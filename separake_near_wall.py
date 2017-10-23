@@ -331,8 +331,8 @@ if __name__ == '__main__':
     # compute partial rir
     # (remove negative partial lengths corresponding to anechoic conditions)
     freqvec = np.fft.rfftfreq(parameters['stft_win_len'], 1 / room.fs)
-    partial_rirs = dict(zip(partial_lengths,
-        [partial_rir(room, L + 1, freqvec) for L in partial_lengths if L >= 0]))
+    partial_rirs = dict(
+        [(L, partial_rir(room, L + 1, freqvec)) for L in partial_lengths if L >= 0])
 
     parameters['partial_rirs'] = partial_rirs
     parameters['source_locations'] = sources_locs
