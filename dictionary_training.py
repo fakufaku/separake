@@ -31,7 +31,8 @@ def nmf_train(training_set, n_latent_variables, solver='mu', n_iter=200, gamma=N
     '''
 
     if solver == 'mu':
-        model = NMF(n_components=n_latent_variables, solver=solver, beta_loss=0, max_iter=n_iter, init='custom')
+        model = NMF(n_components=n_latent_variables, solver=solver, beta_loss=0,\
+            max_iter=n_iter, init='custom')
 
     dictionary = []
 

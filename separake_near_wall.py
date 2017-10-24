@@ -40,22 +40,24 @@ parameters = dict(
                   [0, 0, 5, 5, 3] ],  # y-coordinates
     height = 4.,
     absorption = 0.4,
-    mics_locs = [ [ 5.50, 5.50, 5.50 ],    # x-coordinates
-                  [ 4.53, 4.55, 4.57 ],    # y-coordinates
-                  [ 0.70, 0.70, 0.70 ] ],  # z-coordinates
+    # planar circular array with three microphones and 30 cm inter-mic dist
+    # placed in bottom right corner of the room
+    mics_locs = [[ 5.61047449,  5.53282877,  5.32069674],    # x-coordinates
+                 [ 0.38952551,  0.67930326,  0.46717123],    # y-coordinates
+                 [ 0.70000000,  0.70000000,  0.70000000] ],  # z-coordinates
 
     speech_files = ['data/Speech/fq_sample3.wav', 'data/Speech/fq_sample2.wav',],
 
     master_seed = 0xDEADBEEF,  # seed of the random number generator
-
-    min_dist_src_mic = 2., # Impose a minimum distance of between sources and microphones [in meters]
-    n_src_locations = 10,  # number of different source locations to consider
-    n_epochs = 2,          # number of trials for each parameters combination
+    dist_src_mic = [2.5, 4], # Put all sources in donut
+    min_dist_src_src = 1.,  # minimum distance between two sources
+    n_src_locations = 25,  # number of different source locations to consider
+    n_epochs = 1,          # number of trials for each parameters combination
 
     # convolutive separation parameters
     method = "mu",          # solving method: mu or em
-    dictionary_file = 'W_dictionary_sqmag_mu.npz', #or 'W_dictionary_em
-    em_n_iter = 100,        # number of iterations of MU algorithm
+    dictionary_file = 'W_dictionary_sqmag_mu.npz',
+    em_n_iter = 100,        # number of iterations of EM algorithm
     mu_n_iter = 200,        # number of iterations of MU algorithm
     stft_win_len = 2048,    # supposedly optimal at 16 kHz (Ozerov and Fevote 2010)
     use_dict = True,
@@ -73,13 +75,13 @@ np.random.seed(parameters['master_seed'])
 
 # the active source indices
 n_src = len(parameters['speech_files'])
-src_locs_ind = list(combinations(range(parameters['n_src_locations']), n_src))  
+src_locs_ind = list(combinations(range(parameters['n_src_locations']), n_src))
 
 # number of image sources to use in the 'raking', or -1 for anechoic conditions
 partial_lengths = [-1,0,1,2,3,4,5, 6]  
 
 # only used with a dictionary, automatically set to zero otherwise
-l1_reg = [100, 10, 1., 1e-1, 1e-2, 1e-3, 1e-4] 
+l1_reg = [10000, 1000, 100, 10, 1., 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 0] 
 
 # seed to enforce same random intialization for all run of the algorithm
 # under different parameters
@@ -123,8 +125,10 @@ def parallel_loop(args):
     import numpy as np
     from mir_eval.separation import bss_eval_images
     from multinmf_conv_mu import multinmf_conv_mu_wrapper
+    from multinmf_conv_em import multinmf_conv_em_wrapper
     from utilities import partial_rir
     from sim_tools import json_append
+
 
     try:
         import mkl as mkl_service
@@ -166,8 +170,10 @@ def parallel_loop(args):
         # separate using EM
         sep_sources = multinmf_conv_em_wrapper(
                 mic_signals, partial_rirs_sources,
-                em_n_latent_var, W_init=W_dict,
-                n_iter=em_n_iter, verbose=False)
+                em_n_latent_var, n_iter=em_n_iter,
+                A_init=partial_rirs_sources, W_init=W_dict,
+                update_a=False, update_w=False,
+                verbose=False)
     else:
         raise ValueError('Unknown algorithm {} requested'.format(method))
 
@@ -176,7 +182,7 @@ def parallel_loop(args):
 
     reference_signals = []
     for speech_ind, loc_ind in enumerate(src_locs_ind):
-        reference_signals.append(clean_sources[speech_ind,loc_ind,:n_samples,:]) 
+        reference_signals.append(clean_sources[speech_ind,loc_ind,:n_samples,:])
     reference_signals = np.array(reference_signals)
 
     ret = \
@@ -196,7 +202,7 @@ def parallel_loop(args):
 
     filename = result_file.format(os.getpid())
     json_append(filename, entry)
-    
+
     return entry
 
 
@@ -274,7 +280,7 @@ if __name__ == '__main__':
 
     # a 5 wall room
     room = pra.Room.from_corners(np.array(parameters['floorplan']),
-                                 fs=parameters['fs'], 
+                                 fs=parameters['fs'],
                                  absorption=parameters['absorption'],
                                  max_order=parameters['max_order'])
     # add the third dimension
@@ -295,17 +301,25 @@ if __name__ == '__main__':
     n_src_locs = parameters['n_src_locations']  # number of sources
     sources_locs = np.zeros((3,0))
     while sources_locs.shape[1] < n_src_locs:
-        # new candidate locations in the bounding box
-        new_sources = np.random.rand(3, n_src_locs - sources_locs.shape[1]) * (bbox[:,1] - bbox[:,0])[:,None] + bbox[:,0,None]
+        # new candidate location in the bounding box
+        new_source = np.random.rand(3, 1) * (bbox[:,1] - bbox[:,0])[:,None] + bbox[:,0,None]
+        # check the source are in the room
+        is_in_room = room.is_inside(new_source[:,0])
 
-        # check the sources are in the room
-        is_in_room = [room.is_inside(src) for src in new_sources.T]
+        # check the source is not too close to the microphone
+        mic_dist = pra.distance(mics_locs, new_source).min()
+        distance_mic_ok = (parameters['dist_src_mic'][0] < mic_dist and
+                            mic_dist < parameters['dist_src_mic'][1])
 
-        # check the sources are not too close to the microphone
-        distance_ok = parameters['min_dist_src_mic'] < pra.distance(mics_locs, new_sources).min(axis=0)
+        select = is_in_room and distance_mic_ok
 
-        select = np.logical_and(is_in_room, distance_ok)
-        sources_locs = np.concatenate([sources_locs, new_sources[:,select]], axis=1)
+        if sources_locs.shape[1] > 0:
+            distance_src_ok = (parameters['min_dist_src_src'] 
+                                < pra.distance(sources_locs, new_source).min())
+            select = select and distance_src_ok
+
+        if select:
+            sources_locs = np.concatenate([sources_locs, new_source], axis=1)
 
     source_array = pra.MicrophoneArray(sources_locs, parameters['fs'])
     room.add_microphone_array(source_array)
@@ -316,7 +330,6 @@ if __name__ == '__main__':
     room.image_source_model()
     room.compute_rir()
     single_sources_anechoic = reverse_simulate_all_single_sources(room, speech_data)
-
 
     # 2) Let the room have echoes and recompute all microphone signals
     room.max_order = parameters['max_order']

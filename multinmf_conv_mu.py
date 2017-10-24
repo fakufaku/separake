@@ -74,6 +74,8 @@ def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix
     F, N, n_c = V.shape
     n_s = Q.shape[2]
 
+    reg_norm = (n_c * F) / W.shape[1]
+
     # Definitions
     V_ap = np.zeros((F,N,n_c))
     cost = np.zeros(n_iter)
@@ -85,7 +87,7 @@ def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix
 
     def compute_cost(V, V_ap, H, l1_reg):
         ''' Compute divergence cost function '''
-        return np.sum(V / V_ap - np.log(V / V_ap)) - np.prod(V.shape) + l1_reg * np.sum(H)
+        return np.sum(V / V_ap - np.log(V / V_ap)) - np.prod(V.shape) + reg_norm * l1_reg * np.sum(H)
 
     # Compute app. variance structure V_ap
     for j in range(n_s):
@@ -143,7 +145,7 @@ def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix
 
                 # regularize for sparsity if required
                 if H_l1_reg != 0.:
-                    Hden += H_l1_reg
+                    Hden += reg_norm * H_l1_reg
 
                 H_old = np.copy(H[part[j],:])
                 H[part[j],:] *= (Hnum / Hden)
@@ -206,6 +208,10 @@ def multinmf_conv_mu_wrapper(x, partial_rirs, n_latent_var, W_dict=None, n_iter=
     n_bin = X.shape[0]
     n_frame = X.shape[1]
 
+    # Squared magnitude and unit energy per bin
+    V = np.abs(X)**2
+    V /= np.mean(V)
+
     # Random initialization of multichannel NMF parameters
     np.random.seed(random_seed)
 
@@ -214,7 +220,7 @@ def multinmf_conv_mu_wrapper(x, partial_rirs, n_latent_var, W_dict=None, n_iter=
     for j in range(n_src):
         source_NMF_ind = np.reshape(np.arange(n_latent_var * n_src, dtype=np.int), (n_src,-1))
 
-    mix_psd = 0.5 * (np.mean(np.abs(X[:,:,0])**2 + np.abs(X[:,:,1])**2, axis=1))
+    mix_psd = np.mean(V, axis=(1,2))
     # W is intialized so that its enegy follows mixture PSD
     if W_dict is None:
         W_init = 0.5 * (
@@ -225,17 +231,18 @@ def multinmf_conv_mu_wrapper(x, partial_rirs, n_latent_var, W_dict=None, n_iter=
     else:
         W_init = np.tile(W_dict, n_src)
         fix_W = True
-    H_init = 0.5 * ( np.abs(np.random.randn(K,n_frame)) + np.ones((K,n_frame)) )
+
+    W_init /= np.sum(W_init, axis=0)[None,:]
+
+    # follow average activations
+    mix_act = np.mean(V, axis=(0,2))
+    H_init = 0.5 * ( np.abs(np.random.randn(K,n_frame)) + np.ones((K,n_frame)) ) * mix_act[np.newaxis,:]
 
     # squared mag partial rirs (n_bin, n_channel, n_src)
     Q_init = np.moveaxis(np.abs(partial_rirs)**2, [2], [0])
     Q_init /= np.max(Q_init, axis=0)[None,:,:]
 
-    for i in range(n_channel):
-        for j in range(n_src):
-            W_init[:,source_NMF_ind[j]] /= np.sum(Q_init[:,i,j,None]*W_init[:,source_NMF_ind[j]], axis=0)[None,:]
-
-
+    # RUN NMF
     W_MU, H_MU, Q_MU, cost = \
         multinmf_conv_mu(
                 np.abs(X)**2, W_init, H_init, Q_init, source_NMF_ind, 
