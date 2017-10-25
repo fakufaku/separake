@@ -97,6 +97,9 @@ ENV/
 # mkdocs documentation
 /site
 
-# mypy
+# HUGE BINARY FILES
 .mypy_cache/
 *.pickle
+*.json
+*.npy
+data/results/*

@@ -19,12 +19,13 @@ from mir_eval.separation import bss_eval_images
 
 base_dir = os.path.abspath(os.path.split(__file__)[0])
 print('Base dir', base_dir)
+output_dir = "/data/results/"
 
-if not os.path.exists('data'):
-    os.mkdir('data')
+if not os.path.exists(base_dir+output_dir):
+    os.mkdir(base_dir+output_dir)
 
 # output filename format. {} is replaced by date/time
-data_dir_format = base_dir + '/data/{timestamp}_near_wall_{method}'
+data_dir_format = base_dir + output_dir +'{timestamp}_near_wall_{method}'
 data_file_format = '/data_{}.json'  # The {} is replaced by node pid
 param_file_format = '/parameters.json'  # We store the parameters in a json file
 args_file_format = '/arguments.json'  # We store the arguments list in a json file
@@ -49,14 +50,13 @@ parameters = dict(
     speech_files = ['data/Speech/fq_sample3.wav', 'data/Speech/fq_sample2.wav',],
 
     master_seed = 0xDEADBEEF,  # seed of the random number generator
-
     dist_src_mic = [2.5, 4], # Put all sources in donut
     min_dist_src_src = 1.,  # minimum distance between two sources
-    n_src_locations = 30,  # number of different source locations to consider
+    n_src_locations = 25,  # number of different source locations to consider
     n_epochs = 1,          # number of trials for each parameters combination
 
     # convolutive separation parameters
-    method = "em",          # solving method: mu or em
+    method = "mu",          # solving method: mu or em
     dictionary_file = 'W_dictionary_sqmag_mu.npz',
     em_n_iter = 100,        # number of iterations of EM algorithm
     mu_n_iter = 200,        # number of iterations of MU algorithm
@@ -78,11 +78,14 @@ np.random.seed(parameters['master_seed'])
 n_src = len(parameters['speech_files'])
 src_locs_ind = list(combinations(range(parameters['n_src_locations']), n_src))
 
-# number of image sources to use in the 'raking', or -1 for anechoic conditions
-partial_lengths = [-1,0,1,2,4,7]
+# number of image sources to use in the 'raking', or 
+# 'learn': for learning the TF along the activations
+# 'anechoic': for anechoic conditions
+partial_lengths = ['anechoic','learn',0,1,2,3,4,5,6]
+partial_lengths = ['learn']
 
 # only used with a dictionary, automatically set to zero otherwise
-l1_reg = [100, 1., 1e-2, 1e-4] 
+l1_reg = [10000, 1000, 100, 10, 1., 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 0] 
 
 # seed to enforce same random intialization for all run of the algorithm
 # under different parameters
@@ -141,11 +144,15 @@ def parallel_loop(args):
         pass
 
     # select between echoic and anechoic signals
-    if partial_length >= 0:
+    if partial_length != 'anechoic':
         clean_sources = single_sources
     else:
         # anechoic propagation
         clean_sources = single_sources_anechoic
+
+    n_channels = clean_sources.shape[-1]
+    n_sources = clean_sources.shape[0]
+    n_bins = stft_win_len // 2 + 1
 
     # mix the sources
     mic_signals = np.zeros(clean_sources.shape[-2:])  # (n_samples, n_mics)
@@ -153,19 +160,23 @@ def parallel_loop(args):
             mic_signals += clean_sources[speech_index,loc_index,:,:]
 
     # shape (n_mics, n_src, n_bins)
-    if partial_length >= 0:
+    if partial_length == 'anechoic':
+        # in anechoic conditions, we have flat responses everywhere
+        partial_rirs_sources = np.ones((n_channels, n_sources, n_bins))
+    elif partial_length == 'learn':
+        partial_rirs_sources = None
+    elif partial_length >= 0:
         partial_rirs_sources = np.swapaxes(
                 partial_rirs[partial_length][src_locs_ind,:,:], 0, 1)
     else:
-        # in anechoic conditions, we have flat responses everywhere
-        partial_rirs_sources = np.swapaxes(
-                partial_rirs[0][src_locs_ind,:,:], 0, 1)
+        raise ValueError('Partial length needs to be non-negative')
 
     if method == 'mu':
         # separate using MU
         sep_sources = multinmf_conv_mu_wrapper(
-                mic_signals, partial_rirs_sources,
-                mu_n_latent_var, W_dict=W_dict, l1_reg=gamma,
+                mic_signals, n_sources, mu_n_latent_var, stft_win_len,
+                partial_rirs=partial_rirs_sources,
+                W_dict=W_dict, l1_reg=gamma,
                 n_iter=mu_n_iter, verbose=False, random_seed=seed)
     elif method == 'em':
         # separate using EM
@@ -315,7 +326,7 @@ if __name__ == '__main__':
         select = is_in_room and distance_mic_ok
 
         if sources_locs.shape[1] > 0:
-            distance_src_ok = (parameters['min_dist_src_src'] 
+            distance_src_ok = (parameters['min_dist_src_src']
                                 < pra.distance(sources_locs, new_source).min())
             select = select and distance_src_ok
 
@@ -345,8 +356,9 @@ if __name__ == '__main__':
     # compute partial rir
     # (remove negative partial lengths corresponding to anechoic conditions)
     freqvec = np.fft.rfftfreq(parameters['stft_win_len'], 1 / room.fs)
+    n_echoes = [L for L in partial_lengths if isinstance(L, int) and L >= 0]
     partial_rirs = dict(
-        [(L, partial_rir(room, L + 1, freqvec)) for L in partial_lengths if L >= 0])
+        [(L, partial_rir(room, L + 1, freqvec)) for L in sorted(n_echoes)])
 
     parameters['partial_rirs'] = partial_rirs
     parameters['source_locations'] = sources_locs
@@ -410,7 +422,7 @@ if __name__ == '__main__':
                 rate = ar.progress / ellapsed  # tasks per second
                 delta_finish_min = int(rate * n_remaining / 60) + 1
 
-                end_date = start_time + datetime.timedelta(minutes=delta_finish_min)
+                end_date = datetime.datetime.now() + datetime.timedelta(minutes=delta_finish_min)
                 forecast = end_date.strftime('%Y-%m-%d %H:%M:%S')
 
             print(status_line.format(ar.progress, n_tasks, forecast), end='\r')
