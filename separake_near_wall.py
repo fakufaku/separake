@@ -77,8 +77,11 @@ np.random.seed(parameters['master_seed'])
 n_src = len(parameters['speech_files'])
 src_locs_ind = list(combinations(range(parameters['n_src_locations']), n_src))
 
-# number of image sources to use in the 'raking', or -1 for anechoic conditions
-partial_lengths = [-1,0,1,2,3,4,5, 6]  
+# number of image sources to use in the 'raking', or 
+# 'learn': for learning the TF along the activations
+# 'anechoic': for anechoic conditions
+partial_lengths = ['anechoic','learn',0,1,2,3,4,5,6]
+partial_lengths = ['learn']
 
 # only used with a dictionary, automatically set to zero otherwise
 l1_reg = [10000, 1000, 100, 10, 1., 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 0] 
@@ -140,11 +143,15 @@ def parallel_loop(args):
         pass
 
     # select between echoic and anechoic signals
-    if partial_length >= 0:
+    if partial_length != 'anechoic':
         clean_sources = single_sources
     else:
         # anechoic propagation
         clean_sources = single_sources_anechoic
+
+    n_channels = clean_sources.shape[-1]
+    n_sources = clean_sources.shape[0]
+    n_bins = stft_win_len // 2 + 1
 
     # mix the sources
     mic_signals = np.zeros(clean_sources.shape[-2:])  # (n_samples, n_mics)
@@ -152,19 +159,23 @@ def parallel_loop(args):
             mic_signals += clean_sources[speech_index,loc_index,:,:]
 
     # shape (n_mics, n_src, n_bins)
-    if partial_length >= 0:
+    if partial_length == 'anechoic':
+        # in anechoic conditions, we have flat responses everywhere
+        partial_rirs_sources = np.ones((n_channels, n_sources, n_bins))
+    elif partial_length == 'learn':
+        partial_rirs_sources = None
+    elif partial_length >= 0:
         partial_rirs_sources = np.swapaxes(
                 partial_rirs[partial_length][src_locs_ind,:,:], 0, 1)
     else:
-        # in anechoic conditions, we have flat responses everywhere
-        partial_rirs_sources = np.swapaxes(
-                partial_rirs[0][src_locs_ind,:,:], 0, 1)
+        raise ValueError('Partial length needs to be non-negative')
 
     if method == 'mu':
         # separate using MU
         sep_sources = multinmf_conv_mu_wrapper(
-                mic_signals, partial_rirs_sources,
-                mu_n_latent_var, W_dict=W_dict, l1_reg=gamma,
+                mic_signals, n_sources, mu_n_latent_var, stft_win_len,
+                partial_rirs=partial_rirs_sources,
+                W_dict=W_dict, l1_reg=gamma,
                 n_iter=mu_n_iter, verbose=False, random_seed=seed)
     elif method == 'em':
         # separate using EM
@@ -344,8 +355,9 @@ if __name__ == '__main__':
     # compute partial rir
     # (remove negative partial lengths corresponding to anechoic conditions)
     freqvec = np.fft.rfftfreq(parameters['stft_win_len'], 1 / room.fs)
+    n_echoes = [L for L in partial_lengths if isinstance(L, int) and L >= 0]
     partial_rirs = dict(
-        [(L, partial_rir(room, L + 1, freqvec)) for L in partial_lengths if L >= 0])
+        [(L, partial_rir(room, L + 1, freqvec)) for L in sorted(n_echoes)])
 
     parameters['partial_rirs'] = partial_rirs
     parameters['source_locations'] = sources_locs

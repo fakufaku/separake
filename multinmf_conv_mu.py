@@ -178,7 +178,7 @@ def multinmf_conv_mu(V, W, H, Q, part, n_iter=500, fix_Q=False, fix_W=False, fix
 
     return W, H, Q, cost
 
-def multinmf_conv_mu_wrapper(x, partial_rirs, n_latent_var, W_dict=None, n_iter=500, l1_reg=0., random_seed=0, verbose=False):
+def multinmf_conv_mu_wrapper(x, n_src, n_latent_var, stft_win_len, partial_rirs=None, W_dict=None, n_iter=500, l1_reg=0., random_seed=0, verbose=False):
     '''
     A wrapper around multichannel nmf using MU updates to use with pyroormacoustcs.
     Performs STFT and ensures all signals are the correct shape.
@@ -194,8 +194,6 @@ def multinmf_conv_mu_wrapper(x, partial_rirs, n_latent_var, W_dict=None, n_iter=
     '''
 
     n_channel = x.shape[1]
-    n_src = partial_rirs.shape[1]
-    stft_win_len = 2 * (partial_rirs.shape[2] - 1)
 
     # STFT
     window = np.sqrt(pra.cosine(stft_win_len))  # use sqrt because of synthesis
@@ -238,15 +236,22 @@ def multinmf_conv_mu_wrapper(x, partial_rirs, n_latent_var, W_dict=None, n_iter=
     mix_act = np.mean(V, axis=(0,2))
     H_init = 0.5 * ( np.abs(np.random.randn(K,n_frame)) + np.ones((K,n_frame)) ) * mix_act[np.newaxis,:]
 
-    # squared mag partial rirs (n_bin, n_channel, n_src)
-    Q_init = np.moveaxis(np.abs(partial_rirs)**2, [2], [0])
-    Q_init /= np.max(Q_init, axis=0)[None,:,:]
+    if partial_rirs is not None:
+        # squared mag partial rirs (n_bin, n_channel, n_src)
+        Q_init = np.moveaxis(np.abs(partial_rirs)**2, [2], [0])
+        Q_init /= np.max(Q_init, axis=0)[None,:,:]
+        fix_Q = True
+    else:
+        # random initialization
+        Q_shape = (n_bin, n_channel, n_src)
+        Q_init = (0.5 * (1.9 * np.abs(np.random.randn(*Q_shape)) + 0.1 * np.ones(Q_shape))) ** 2
+        fix_Q = False
 
     # RUN NMF
     W_MU, H_MU, Q_MU, cost = \
         multinmf_conv_mu(
                 np.abs(X)**2, W_init, H_init, Q_init, source_NMF_ind, 
-                n_iter=n_iter, fix_Q=True, fix_W=fix_W, 
+                n_iter=n_iter, fix_Q=fix_Q, fix_W=fix_W, 
                 H_l1_reg=l1_reg, 
                 verbose=verbose)
 
