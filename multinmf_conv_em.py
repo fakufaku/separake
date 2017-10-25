@@ -39,7 +39,8 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
     # log_like_arr      : array of log-likelihoods
 
     ###########################################################################
-    # Copyright 2017 Robin Scheibler
+    # Copyright 2017 Diego Di Carlo, Robin Scheibler
+    #   Port to Python, extension to arbitrary number of channels
 
     # Adapted from Matlab code by Alexey Ozerov
     # Copyright 2010 Alexey Ozerov
