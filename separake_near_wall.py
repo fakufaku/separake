@@ -19,12 +19,13 @@ from mir_eval.separation import bss_eval_images
 
 base_dir = os.path.abspath(os.path.split(__file__)[0])
 print('Base dir', base_dir)
+output_dir = "/data/results/"
 
-if not os.path.exists('data'):
-    os.mkdir('data')
+if not os.path.exists(base_dir+output_dir):
+    os.mkdir(base_dir+output_dir)
 
 # output filename format. {} is replaced by date/time
-data_dir_format = base_dir + '/data/{timestamp}_near_wall_{method}'
+data_dir_format = base_dir + output_dir +'{timestamp}_near_wall_{method}'
 data_file_format = '/data_{}.json'  # The {} is replaced by node pid
 param_file_format = '/parameters.json'  # We store the parameters in a json file
 args_file_format = '/arguments.json'  # We store the arguments list in a json file
@@ -325,7 +326,7 @@ if __name__ == '__main__':
         select = is_in_room and distance_mic_ok
 
         if sources_locs.shape[1] > 0:
-            distance_src_ok = (parameters['min_dist_src_src'] 
+            distance_src_ok = (parameters['min_dist_src_src']
                                 < pra.distance(sources_locs, new_source).min())
             select = select and distance_src_ok
 

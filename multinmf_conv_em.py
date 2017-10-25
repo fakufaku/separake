@@ -104,6 +104,9 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
             Sigma_b_anneal[:, iter] = ((np.sqrt(Sigma_b0) * (iter_num - iter) \
                 + np.ones(F) * np.sqrt(final_ann_noise_var) * iter) / iter_num) ** 2
 
+    # avoiding divergence
+    W[np.where(W<=1e-6)[0]]=1e-6
+
     # MAIN LOOP
     for iter in range(iter_num):
         print('EM iteration {} of {}:'.format(iter, iter_num))
