@@ -82,7 +82,6 @@ src_locs_ind = list(combinations(range(parameters['n_src_locations']), n_src))
 # 'learn': for learning the TF along the activations
 # 'anechoic': for anechoic conditions
 partial_lengths = ['anechoic','learn',0,1,2,3,4,5,6]
-partial_lengths = ['learn']
 
 # only used with a dictionary, automatically set to zero otherwise
 l1_reg = [10000, 1000, 100, 10, 1., 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 0] 
@@ -407,9 +406,12 @@ if __name__ == '__main__':
         n_tasks = len(arguments)
         digits = int(np.log10(n_tasks) + 1)
         dformat = '{:' + str(digits) + 'd}'
-        status_line = dformat + '/' + dformat + ' tasks done. Forecast end {:>20s}'
+        status_line = '   ' + dformat + '/' + dformat + ' tasks done. Forecast end {:>20s}. Remaining: {:>8s}'
+
+        print('/!\\ the time estimate will only be correct when all tasks take about the same time to finish /!\\')
 
         forecast = 'NA'
+        time_remaining = 'NA'
         while not ar.done():
 
             n_remaining = n_tasks - ar.progress
@@ -422,12 +424,21 @@ if __name__ == '__main__':
                 rate = ar.progress / ellapsed  # tasks per second
                 delta_finish_min = int(rate * n_remaining / 60) + 1
 
-                end_date = datetime.datetime.now() + datetime.timedelta(minutes=delta_finish_min)
-                forecast = end_date.strftime('%Y-%m-%d %H:%M:%S')
+                tdelta = datetime.timedelta(minutes=delta_finish_min)
+                end_date = datetime.datetime.now() + tdelta
 
-            print(status_line.format(ar.progress, n_tasks, forecast), end='\r')
+                # convert to strings
+                forecast = end_date.strftime('%Y-%m-%d %H:%M:%S')
+                s = int(tdelta.total_seconds())
+                time_remaining = '{:02}:{:02}:{:02}'.format(s // 3600, s % 3600 // 60, s % 60)
+
+            formatted_status_line = status_line.format(ar.progress, n_tasks, forecast, time_remaining)
+            print(formatted_status_line, end='\r')
 
             time.sleep(1)
+
+        # clean the output
+        print(' ' * len(formatted_status_line))
 
         print('Show all output from nodes, if any:')
         ar.display_outputs()

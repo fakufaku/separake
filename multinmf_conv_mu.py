@@ -187,10 +187,25 @@ def multinmf_conv_mu_wrapper(x, n_src, n_latent_var, stft_win_len, partial_rirs=
     ----------
     x: ndarray
         (n_samples x n_channel) array of time domain samples
-    partial_rirs: ndarray
-        (n_channel x n_src x n_bins) array of partial TF
+    n_src: int
+        The number of sources
     n_latent_var: int
-        number of latent variables in the NMF
+        The number of latent variables in the NMF
+    stft_win_len:
+        The length of the STFT window
+    partial_rirs: array_like, optional
+        (n_channel x n_src x n_bins) array of partial TF. If provided, Q is not optimized.
+    W_dict: array_like, optional
+        A dictionary of atoms that can be used in the NMF. If provided, W is not optimized.
+    n_iter: int, optional
+        The number of iterations of NMF (default 500)
+    l1_reg: float, optional
+        The weight of the l1 regularization term for the activations (default 0., not regularized)
+    random_seed: unsigned int, optional
+        The seed to provide to the RNG prior to initialization of NMF parameters. This allows to use
+        repeatable initialization.
+    verbose: bool, optional
+        When true, prints convergence info of NMF (default False)
     '''
 
     n_channel = x.shape[1]
