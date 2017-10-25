@@ -52,8 +52,10 @@ parameters = dict(
     master_seed = 0xDEADBEEF,  # seed of the random number generator
     dist_src_mic = [2.5, 4], # Put all sources in donut
     min_dist_src_src = 1.,  # minimum distance between two sources
-    n_src_locations = 25,  # number of different source locations to consider
-    n_epochs = 1,          # number of trials for each parameters combination
+    n_src_locations = 30,  # number of different source locations to consider
+    n_epochs = 5,          # number of trials for each parameters combination
+    # optimal gamma set empirically
+    gamma_opt = {'learn': 0.1, 'anechoic': 10., 0: 10., 1: 0.0001, 2:0., 3:0., 4:0, 5:0, 6:0., 7:0.}
 
     # convolutive separation parameters
     method = "mu",          # solving method: mu or em
@@ -84,7 +86,8 @@ src_locs_ind = list(combinations(range(parameters['n_src_locations']), n_src))
 partial_lengths = ['anechoic','learn',0,1,2,3,4,5,6]
 
 # only used with a dictionary, automatically set to zero otherwise
-l1_reg = [10000, 1000, 100, 10, 1., 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 0] 
+#l1_reg = [10000, 1000, 100, 10, 1., 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 0] 
+l1_reg = ['opt_fixed']  # use the gamma_opt parameter defined above
 
 # seed to enforce same random intialization for all run of the algorithm
 # under different parameters
@@ -104,6 +107,7 @@ def parallel_loop(args):
     # expand positional arguments
     src_locs_ind, partial_length, gamma, seed = args
 
+
     # now the keyword arguments
     result_file = parameters['result_file']
     stft_win_len = parameters['stft_win_len']
@@ -119,6 +123,10 @@ def parallel_loop(args):
     mu_n_iter = parameters['mu_n_iter']
     base_dir = parameters['base_dir']
     method = parameters['method']
+
+    # check if gamma should be fixed:
+    if gamma == 'opt_fixed':
+        gamma = parameters['gamma_opt'][partial_length]
 
     # make sure base dir is in path
     import sys, os
