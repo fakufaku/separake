@@ -87,6 +87,7 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--iter', type=int, default=200, help='Number of iterations of the algorithm')
     parser.add_argument('-s', '--save', metavar='DIR', type=str, help='Save the audio files to %(metavar)s')
     parser.add_argument('--mono', action='store_true', help='Only save the first channel')
+    parser.add_argument('--save_rir', type=str, metavar='DIR', help='Plot and save a typical RIR to %(metavar)s')
 
     args = parser.parse_args()
 
@@ -244,6 +245,28 @@ if __name__ == '__main__':
         filename = args.save + '/separake_{}_mix_'.format(args.method) + '_'.join(bnames) + '.wav'
         wavfile.write(filename, fs, save_mix)
         for i, name in enumerate(bnames):
-            filename = args.save + '/separake_{}_sep_'.format(args.method) + name
+            filename = args.save + '/separake_{}_sep_'.format(args.method) + name + '.wav'
             wavfile.write(filename, fs, save_sep[i])
+
+    if args.save_rir is not None:
+
+        n_taps = len(room.rir[0][0])
+        import seaborn as sns
+        sns.set(style='white', context='paper', font_scale=0.8,
+                rc={
+                    'figure.figsize': (1.5748, 1.29921),  # 40 x 33 mm
+                    'lines.linewidth': 0.5,
+                    'font.family': u'Roboto',
+                    'font.sans-serif': [u'Roboto Thin'],
+                    'text.usetex': False,
+                    })
+        plt.figure()
+        plt.plot(np.arange(n_taps) / room.fs, room.rir[0][0])
+        plt.xlabel('Time [s]')
+        plt.yticks([])
+        sns.despine(left=True, bottom=True)
+        plt.tight_layout(pad=0.5)
+        plt.savefig(args.save_rir + '/typical_rir.pdf')
+
+
 
