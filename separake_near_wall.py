@@ -47,23 +47,24 @@ parameters = dict(
                  [ 0.38952551,  0.67930326,  0.46717123],    # y-coordinates
                  [ 0.70000000,  0.70000000,  0.70000000] ],  # z-coordinates
 
-    speech_files = ['data/Speech/fq_sample3.wav', 'data/Speech/fq_sample2.wav',],
+
+    speech_files = ['data/Speech/SA1_32.wav', 'data/Speech/SX254_32.wav',],
 
     master_seed = 0xDEADBEEF,  # seed of the random number generator
     dist_src_mic = [2.5, 4], # Put all sources in donut
     min_dist_src_src = 1.,  # minimum distance between two sources
-    n_src_locations = 25,  # number of different source locations to consider
+    # n_src_locations = 25,  # number of different source locations to consider
+    n_src_locations = 2,  # number of different source locations to consider
     n_epochs = 1,          # number of trials for each parameters combination
 
     # convolutive separation parameters
-    method = "mu",          # solving method: mu or em
-    dictionary_file = 'W_dictionary_sqmag_mu.npz',
-    em_n_iter = 100,        # number of iterations of EM algorithm
-    mu_n_iter = 200,        # number of iterations of MU algorithm
+    method = "em",          # solving method: mu or em
+    dictionary_file = 'W_dictionary_em.npz',
+    # dictionary_file = 'W_dictionary_sqmag_mu.npz',
+    n_iter = 200,           # number of iterations of the solver algorithm
     stft_win_len = 2048,    # supposedly optimal at 16 kHz (Ozerov and Fevote 2010)
     use_dict = True,
-    mu_n_latent_var = 4,    # number of latent variables (ignored when dictionary is used)
-    em_n_latent_var = 4,    # number of latent variables (ignored when dictionary is used)
+    n_latent_var = 4,    # number of latent variables (ignored when dictionary is used)
     base_dir = base_dir,
     )
 
@@ -78,14 +79,16 @@ np.random.seed(parameters['master_seed'])
 n_src = len(parameters['speech_files'])
 src_locs_ind = list(combinations(range(parameters['n_src_locations']), n_src))
 
-# number of image sources to use in the 'raking', or 
+# number of image sources to use in the 'raking', or
 # 'learn': for learning the TF along the activations
 # 'anechoic': for anechoic conditions
 partial_lengths = ['anechoic','learn',0,1,2,3,4,5,6]
-partial_lengths = ['learn']
+partial_lengths = ['learn',0,1,2,3,4,5,6]
+# partial_lengths = ['learn']
 
 # only used with a dictionary, automatically set to zero otherwise
-l1_reg = [10000, 1000, 100, 10, 1., 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 0] 
+l1_reg = [10000, 1000, 100, 10, 1., 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 0]
+l1_reg = [1]
 
 # seed to enforce same random intialization for all run of the algorithm
 # under different parameters
@@ -97,7 +100,7 @@ arguments = list(product(src_locs_ind, partial_lengths, l1_reg, seeds))
 # This is used for debugging.
 # we want to use mkl acceleration when running in
 # serial mode, but not on the cluster
-use_mkl = False
+use_mkl = True
 
 def parallel_loop(args):
     ''' This is the function that should be dumb parallel '''
@@ -113,11 +116,10 @@ def parallel_loop(args):
     partial_rirs = parameters['partial_rirs']
     single_sources = parameters['single_sources']
     single_sources_anechoic = parameters['single_sources_anechoic']
-    mu_n_latent_var = parameters['mu_n_latent_var']
-    em_n_latent_var = parameters['em_n_latent_var']
+    n_latent_var = parameters['n_latent_var']
     W_dict = parameters['W_dict']
-    em_n_iter = parameters['em_n_iter']
-    mu_n_iter = parameters['mu_n_iter']
+    n_iter = parameters['n_iter']
+    n_iter = parameters['n_iter']
     base_dir = parameters['base_dir']
     method = parameters['method']
 
@@ -163,6 +165,9 @@ def parallel_loop(args):
     if partial_length == 'anechoic':
         # in anechoic conditions, we have flat responses everywhere
         partial_rirs_sources = np.ones((n_channels, n_sources, n_bins))
+        if method == 'em':
+            freqvec = np.fft.rfftfreq(parameters['stft_win_len'], 1 / room.fs)
+            partial_rirs_sources = partial_rir(room, 0, freqvec)
     elif partial_length == 'learn':
         partial_rirs_sources = None
     elif partial_length >= 0:
@@ -174,20 +179,26 @@ def parallel_loop(args):
     if method == 'mu':
         # separate using MU
         sep_sources = multinmf_conv_mu_wrapper(
-                mic_signals, n_sources, mu_n_latent_var, stft_win_len,
+                mic_signals, n_sources, n_latent_var, stft_win_len,
                 partial_rirs=partial_rirs_sources,
                 W_dict=W_dict, l1_reg=gamma,
-                n_iter=mu_n_iter, verbose=False, random_seed=seed)
+                n_iter=n_iter, verbose=False, random_seed=seed)
     elif method == 'em':
         # separate using EM
         sep_sources = multinmf_conv_em_wrapper(
-                mic_signals, partial_rirs_sources,
-                em_n_latent_var, n_iter=em_n_iter,
+                mic_signals, n_sources, stft_win_len,
+                n_latent_var, n_iter=n_iter,
                 A_init=partial_rirs_sources, W_init=W_dict,
                 update_a=False, update_w=False,
                 verbose=False)
     else:
         raise ValueError('Unknown algorithm {} requested'.format(method))
+
+    #render sources
+    for j, s in enumerate(sep_sources):
+        # write the separated source to a wav file
+        out_filename = 'data/Speech/' + 'speech_source_' + str(j) + '_' + str(partial_length) + '_EM.wav'
+        wavfile.write(out_filename, room.fs, s)
 
     # compute the metrics
     n_samples = np.minimum(clean_sources.shape[2], sep_sources.shape[1])
@@ -259,9 +270,10 @@ if __name__ == '__main__':
     # prepare the dictionary
     if parameters['use_dict']:
         W_dict = np.load(parameters['dictionary_file'])['W_dictionary']
-        mu_n_latent_var = W_dict.shape[1]  # set by dictionary
-        print('Using dictionary with', mu_n_latent_var, 'latent variables')
-        parameters['mu_n_latent_var'] = mu_n_latent_var
+        n_latent_var = W_dict.shape[1]  # set by dictionary
+        speech_files = parameters['speech_files']
+        print('Using dictionary with', n_latent_var, 'latent variables')
+        parameters['n_latent_var'] = n_latent_var
         # save a copy of the dictionary to the sim directory
         copyfilename = data_dir_name + '/' + os.path.basename(parameters['dictionary_file'])
         shutil.copyfile(parameters['dictionary_file'], copyfilename)
@@ -282,8 +294,9 @@ if __name__ == '__main__':
 
     # the speech samples
     speech_data = []
-    n_speech = len(parameters['speech_files'])
-    for sp_fn in parameters['speech_files']:
+    n_speech = len(speech_files)
+    r = 16000
+    for sp_fn in speech_files:
         r, audio = wavfile.read(sp_fn)
         audio /= np.std(audio)
         if r != parameters['fs']:

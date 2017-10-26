@@ -59,12 +59,13 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
 
     # some constants
     final_ann_noise_var = 3e-11
+    log_like_threshold = -2#1e-2
 
     F, N, I = X.shape
     K = W0.shape[1]
     J = len(source_NMF_ind)
 
-    print(F, N, I, J, K)
+    print('Multichannel NMF dimension:', F, N, I, J, K)
 
     # if I != 2:
     #     raise ValueError('Multi_NMF_EM_conv: number of channels must be 2')
@@ -96,6 +97,17 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
     bar_A = np.zeros((F, I, K), dtype=np.complex)
     Vc = np.zeros((F, N, K))
     log_like_arr = np.zeros((iter_num))
+
+    # Normalization of A
+    for j in range(J):
+        nonzero_f_ind = np.where(A[:,0,j] != 0)[0]
+        sign = A[nonzero_f_ind,0,j] / np.abs(A[nonzero_f_ind,0,j])
+        for i in range(I):
+            A[nonzero_f_ind,I-i-1,j] = A[nonzero_f_ind,I-i-1,j] / sign
+
+        A_scale = np.sum(np.abs(A[:,:,j]) ** 2, axis = 1)
+        A[:,:,j] = A[:,:,j] / np.sqrt(A_scale[:,None])
+        W[:,source_NMF_ind[j]] = W[:, source_NMF_ind[j]] * A_scale[:,None]
 
     # initialize simulated annealing variances (if necessary)
     if SimAnneal_flag > 0:
@@ -156,8 +168,13 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
         log_like = - np.sum( np.squeeze(xSx) + np.log(Det_Sigma_x * np.pi)) / (N * F)
 
         if iter > 1:
-            log_like_diff = log_like - log_like_arr[iter - 1]
+            log_like_diff = log_like - log_like_arr[iter-1]
             print('      Log-likelihood: {}\n      Log-likelihood improvement: {}'.format(log_like, log_like_diff))
+            # if the increment of the log-likelihood is less, exit
+            if iter > 10 and\
+                (log_like_diff<0 and log_like_diff_prev<0):
+                break
+            log_like_diff_prev = log_like_diff
         else:
             print('      Log-likelihood:', log_like)
         log_like_arr[iter] = log_like
@@ -243,21 +260,25 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
                 if not k: print("     - Update H\n")
                 H[k, :] = np.sum(Vc[:,:,k] / np.outer(W[:,k], np.ones(N)), axis=0) / F
 
-        for j in range(J):
-            # Normalization of A
-            nonzero_f_ind = np.where(A[:,0,j] != 0)[0]
-            sign = A[nonzero_f_ind,0,j] / np.abs(A[nonzero_f_ind,0,j])
-            for i in range(I):
-                A[nonzero_f_ind,I-i-1,j] = A[nonzero_f_ind,I-i-1,j] / sign
+        # Normalization of A
+        if update_a:
+            for j in range(J):
+                nonzero_f_ind = np.where(A[:,0,j] != 0)[0]
+                sign = A[nonzero_f_ind,0,j] / np.abs(A[nonzero_f_ind,0,j])
+                for i in range(I):
+                    A[nonzero_f_ind,I-i-1,j] = A[nonzero_f_ind,I-i-1,j] / sign
 
-            A_scale = np.sum(np.abs(A[:,:,j]) ** 2, axis = 1)
-            A[:,:,j] = A[:,:,j] / np.sqrt(A_scale[:,None])
-            W[:,source_NMF_ind[j]] = W[:, source_NMF_ind[j]] * A_scale[:,None]
+                A_scale = np.sum(np.abs(A[:,:,j]) ** 2, axis = 1)
+                A[:,:,j] = A[:,:,j] / np.sqrt(A_scale[:,None])
+                if update_w:
+                    W[:,source_NMF_ind[j]] = W[:, source_NMF_ind[j]] * A_scale[:,None]
 
         # Normalisation of W components
-        w = np.sum(W, axis=0)
-        W /= w[np.newaxis,:]
-        H *= w[:,np.newaxis]  # Energy transfer to H
+        if update_w:
+            w = np.sum(W, axis=0)
+            W /= w[np.newaxis,:]
+            H *= w[:,np.newaxis]  # Energy transfer to H
+
     # source estimates
     S = Gs_x
 
@@ -271,7 +292,8 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
     return W, H, A, Sigma_b, S, log_like_arr
 
 
-def multinmf_conv_em_wrapper(x, partial_rirs, n_latent_var, n_iter=500, \
+def multinmf_conv_em_wrapper(
+        x, n_src, stft_win_len, n_latent_var, n_iter=500, \
         A_init=None, W_init=None, H_init=None, \
         update_a=True, update_w=True, update_h=True, \
         verbose = False):
@@ -284,15 +306,11 @@ def multinmf_conv_em_wrapper(x, partial_rirs, n_latent_var, n_iter=500, \
     ----------
     x: ndarray
         (n_samples x n_chan) array of time domain samples
-    partial_rirs: ndarray
-        (n_chan x n_src x n_bins) array of partial TF
     n_latent_var: int
         number of latent variables in the NMF
     '''
 
     n_chan = x.shape[1]
-    n_src = partial_rirs.shape[1]
-    stft_win_len = 2 * (partial_rirs.shape[2] - 1)
 
     # STFT
     window = np.sqrt(pra.cosine(stft_win_len))  # use sqrt because of synthesis
@@ -313,10 +331,12 @@ def multinmf_conv_em_wrapper(x, partial_rirs, n_latent_var, n_iter=500, \
     # Random initialization of multichannel NMF parameters
     source_NMF_ind = []
     for j in range(n_src):
-        source_NMF_ind = np.reshape(np.arange(n_latent_var * n_src, dtype=np.int), (n_src,-1))
+        source_NMF_ind = np.reshape(np.arange(K, dtype=np.int), (n_src,-1))
 
     mix_psd = 0.5 * (np.mean(np.sum(np.abs(X)**2, axis=2), axis=1))
     if A_init is None:
+        # random initialization
+        update_a = True
         A_init = (0.5 *
                     ( 1.9 * np.abs(random.randn(n_bin, n_chan, n_src))       \
                     + 0.1 * np.ones((n_bin, n_chan, n_src))                  \
@@ -324,9 +344,8 @@ def multinmf_conv_em_wrapper(x, partial_rirs, n_latent_var, n_iter=500, \
                                 + 1j * random.randn(n_bin, n_chan, n_src))  \
                 )
     else:
-        # squared mag partial rirs (n_bin, n_chan, n_src)
-        print(partial_rirs.shape)
-        A_init = np.moveaxis(np.abs(partial_rirs)**2, [2], [0])
+        # reshape the partial rir input (n_bin, n_chan, n_src)
+        A_init = np.moveaxis(A_init, [2], [0])
 
     # W is intialized so that its enegy follows mixture PSD
     if W_init is None:
@@ -348,22 +367,23 @@ def multinmf_conv_em_wrapper(x, partial_rirs, n_latent_var, n_iter=500, \
 
     # Computation of the spatial source images
     print('Computation of the spatial source images\n')
-    Ie_EM = np.zeros((n_bin,n_fram,n_src,nchan), dtype=np.complex)
+    Ie_EM = np.zeros((n_bin,n_frame,n_src,n_chan), dtype=np.complex)
     for j in range(n_src):
         for f in range(n_bin):
             Ie_EM[f,:,j,:] = np.outer(Se_EM[f,:,j], Ae_EM[:,j,f])
 
     sep_sources = []
+
     # Inverse STFT
+    ie_EM = []
     for j in range(n_src):
         # channel-wise istft with synthesis window
-        ie_MU = []
+        ie_EM = []
         for ch in range(n_chan):
-            ie_MU.append(
-                    pra.istft(Im[:,:,j,ch].T, stft_win_len, stft_win_len // 2, win=window, transform=np.fft.irfft)
+            ie_EM.append(
+                    pra.istft(Ie_EM[:,:,j,ch].T, stft_win_len, stft_win_len // 2, win=window, transform=np.fft.irfft)
                     )
-
-        sep_sources.append(np.array(ie_MU).T)
+        sep_sources.append(np.array(ie_EM).T)
 
     return np.array(sep_sources)
 

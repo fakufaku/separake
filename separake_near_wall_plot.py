@@ -17,7 +17,7 @@ if __name__ == "__main__":
     # parse arguments
     parser = argparse.ArgumentParser(
             description='Plot the data simulated by separake_near_wall')
-    parser.add_argument('-p', '--pickle', action='store_true', 
+    parser.add_argument('-p', '--pickle', action='store_true',
             help='Read the aggregated data table from a pickle cache')
     parser.add_argument('-s', '--show', action='store_true',
             help='Display the plots at the end of data analysis')
@@ -66,13 +66,14 @@ if __name__ == "__main__":
                     [ record['partial_length'], record['gamma'], record['seed'] ]
                     + [np.mean(record[m.lower()]) for m in metrics]
                     )
-           
+
         # create a pandas frame
         print('Making PANDAS frame...')
         df = pd.DataFrame(table, columns=columns)
 
         # turns out all we need is the follow pivoted table
         perf = pd.pivot_table(df, values=metrics, index='n_echos', columns='gamma', aggfunc=np.mean)
+        print(perf)
 
         perf.to_pickle(pickle_file)
 
@@ -84,7 +85,7 @@ if __name__ == "__main__":
 
     sns.set(style='whitegrid', context='paper', font_scale=1.2,
             rc={
-                'figure.figsize':(3.5,3.15), 
+                'figure.figsize':(3.5,3.15),
                 'lines.linewidth':1.,
                 'font.family': 'sans-serif',
                 'font.sans-serif': [u'Helvetica'],
@@ -97,9 +98,9 @@ if __name__ == "__main__":
         ax = plt.subplot(2,2,i+1)
         perf[metric].plot(ax=ax, legend=False)
         if i == 3:
-            leg = plt.legend(perf[metric].columns, 
+            leg = plt.legend(perf[metric].columns,
                             title='$\gamma$',
-                            frameon=True, labelspacing=0.5, 
+                            frameon=True, labelspacing=0.5,
                             framealpha=0.8, loc=6,
                             bbox_to_anchor=[1.05, 1.2])
             leg.get_frame().set_linewidth(0.0)
@@ -110,9 +111,8 @@ if __name__ == "__main__":
 
     plt.tight_layout(pad=0.5)
 
-    plt.savefig('figures/separake_near_wall_mu.pdf',
+    plt.savefig('figures/separake_near_wall_em.pdf',
             bbox_extra_artists=(leg,), bbox_inches='tight')
 
     if plot_flag:
         plt.show()
-
