@@ -51,7 +51,7 @@ parameters = dict(
     dist_src_mic = [2.5, 4], # Put all sources in donut
     min_dist_src_src = 1.,  # minimum distance between two sources
     n_src_locations = 40,  # number of different source locations to consider
-    n_epochs = 5,          # number of trials for each parameters combination
+    n_epochs = 3,          # number of trials for each parameters combination
 
     # convolutive separation parameters
     method = "mu",          # solving method: mu or em

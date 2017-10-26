@@ -30,7 +30,7 @@ if __name__ == "__main__":
 
     # metrics to take in the plot
     metrics = ['SDR', 'SIR', 'ISR', 'SAR']
-    columns = ['n_echoes','gamma','seed','Speaker gender'] + metrics
+    columns = ['n_echoes','seed','Speaker gender'] + metrics
 
     parameters = dict()
     args = []
@@ -90,7 +90,7 @@ if __name__ == "__main__":
                 '''
                 for src_index in range(len(record['sdr'])):
                     table.append(
-                            [ record['partial_length'], record['gamma'], record['seed'], src_ind_2_label[src_index], ]
+                            [ record['partial_length'], record['seed'], src_ind_2_label[src_index], ]
                             + [record[m.lower()][src_index] for m in metrics]
                             )
                
@@ -104,70 +104,28 @@ if __name__ == "__main__":
         else:
             df = pd.concat([df, df_part], ignore_index=True)
 
-    # turns out all we need is the follow pivoted table
-    perf = pd.pivot_table(df, values=metrics, index='n_echoes', columns='gamma', aggfunc=np.median)
-
-    label_index = [x for x in perf.index if not isinstance(x, int)]
-    int_index = [x for x in perf.index if isinstance(x, int)]
-    index = int_index + label_index
+    label_index = [x for x in df.n_echoes.unique() if not isinstance(x, int)]
+    int_index = [x for x in df.n_echoes.unique() if isinstance(x, int)]
+    index = sorted(int_index) + label_index
 
     # Draw the figure
     print('Plotting...')
 
-    sns.set(style='whitegrid')
-    sns.plotting_context(context='paper', font_scale=1.)
+    # Now plot the final figure, that should be much nicer and go in the paper
+    newdf = df.replace({'n_echoes': {-2:'learn', -1:'anechoic'}})
 
-    sns.set(style='whitegrid', context='paper', font_scale=1.2,
+    ## Violin Plot
+    #sns.set(style="whitegrid", context="paper", palette="pastel", color_codes=True, font_scale=0.9)
+    #plt.figure(figsize=(3.38649, 3.38649))
+    sns.set(style='whitegrid', context='paper', palette='pastel', font_scale=0.9,
             rc={
-                'figure.figsize':(3.5,3.15), 
+                'figure.figsize':(3.38649,3.338649), 
                 'lines.linewidth':1.,
                 'font.family': u'Roboto',
-                'font.sans-serif': [u'Roboto Thin'],
+                'font.sans-serif': [u'Roboto Light'],
                 'text.usetex': False,
                 })
 
-    # plot the results
-    plt.figure()
-    for i, metric in enumerate(metrics):
-        ax = plt.subplot(2,2,i+1)
-        perf[metric].plot(ax=ax, legend=False)
-        if i == 3:
-            leg = plt.legend(perf[metric].columns, 
-                            title='$\gamma$',
-                            frameon=True, labelspacing=0.5, 
-                            framealpha=0.8, loc=6,
-                            bbox_to_anchor=[1.05, 1.2])
-            leg.get_frame().set_linewidth(0.0)
-        plt.ylabel(metric)
-        plt.xlabel('Number of echoes')
-
-    sns.despine(offset=10, trim=False, left=True, bottom=True)
-
-    plt.tight_layout(pad=0.5)
-
-    plt.savefig('figures/separake_near_wall_mu.pdf',
-            bbox_extra_artists=(leg,), bbox_inches='tight')
-
-    # Now plot the final figure, that should be much nicer and go in the paper
-    gamma_selection = [np.argmax(perf['SDR'].T[n]) for n in perf.index]
-    print('Selected values of gamma per max SIR:')
-    print([x for x in zip(perf.index, gamma_selection)])
-
-    newdf = None
-    for n, g in zip(perf.index, gamma_selection):
-        I = np.logical_and(df['n_echoes'] == n, df['gamma'] == g)
-        df_part = df[I][['n_echoes', 'Speaker gender'] + metrics]
-
-        if newdf is None:
-            newdf = df_part
-        else:
-            newdf = pd.concat([newdf, df_part], ignore_index=True)
-
-    newdf = newdf.replace({'n_echoes': {-2:'learn', -1:'anechoic'}})
-
-    ## Violin Plot
-    sns.set(style="whitegrid", context="paper", palette="pastel", color_codes=True, font_scale=0.9)
-    plt.figure(figsize=(3.38649, 3.38649))
 
     plt.subplot(2,1,1)
     g = sns.violinplot(data=newdf, x='n_echoes', y='SDR', hue='Speaker gender',
