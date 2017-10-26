@@ -17,7 +17,7 @@ if __name__ == '__main__':
     # parameters
     fs = 16000
     nfft = 2048  # supposedly optimal at 16 kHz (Ozerov and Fevote)
-    max_order = 10  # max image sources order in simulation
+    max_order = 8  # max image sources order in simulation
 
     # convolutive separation parameters
     partial_length = 2  # number of image sources to use in the 'raking'
@@ -25,7 +25,7 @@ if __name__ == '__main__':
     stft_win_len = 2048  # supposedly optimal at 16 kHz
 
     # the speech samples
-    r1, speech1 = wavfile.read('data/Speech/fq_sample1.wav')
+    r1, speech1 = wavfile.read('data/Speech/fq_sample3.wav')
     speech1 /= np.std(speech1)
     r2, speech2 = wavfile.read('data/Speech/fq_sample2.wav')
     speech2 /= np.std(speech2)
@@ -33,7 +33,7 @@ if __name__ == '__main__':
         raise ValueError('The speech samples should have the same sample rate as the simulation')
 
     # a 5 wall room
-    floorplan = np.array([[0, 0], [7, 0], [7, 5], [2,5], [0,3]]).T
+    floorplan = np.array([[0, 0], [6, 0], [6, 5], [2,5], [0,3]]).T
     room = pra.Room.from_corners(floorplan, fs=fs, absorption=0.4, max_order=max_order)
     room.extrude(4., absorption=0.4)  # add the third dimension
 

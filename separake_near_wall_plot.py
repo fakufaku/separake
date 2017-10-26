@@ -166,12 +166,13 @@ if __name__ == "__main__":
     newdf = newdf.replace({'n_echoes': {-2:'learn', -1:'anechoic'}})
 
     ## Violin Plot
-    sns.set(style="whitegrid", palette="pastel", color_codes=True)
-    plt.figure()
+    sns.set(style="whitegrid", context="paper", palette="pastel", color_codes=True, font_scale=0.9)
+    plt.figure(figsize=(3.38649, 3.38649))
 
     plt.subplot(2,1,1)
-    g = sns.violinplot(data=newdf, x='n_echoes', y='SDR', hue='Speaker gender', x_order=index, split=True, palette={'Male':'b', 'Female':'y'})
-    plt.legend(loc=0)
+    g = sns.violinplot(data=newdf, x='n_echoes', y='SDR', hue='Speaker gender',
+            x_order=index, split=True, palette={'Male':'b', 'Female':'y'})
+    g.legend(loc=0, framealpha=0.4)
     plt.xlabel('')
     plt.xticks([])
     plt.yticks(range(-5,16,5))
@@ -179,7 +180,8 @@ if __name__ == "__main__":
     sns.despine(left=True)
 
     plt.subplot(2,1,2)
-    sns.violinplot(data=newdf, x='n_echoes', y='SIR', hue='Speaker gender', x_order=index, split=True, palette={'Male':'b', 'Female':'y'})
+    sns.violinplot(data=newdf, x='n_echoes', y='SIR', hue='Speaker gender',
+            x_order=index, split=True, palette={'Male':'b', 'Female':'y'})
     plt.legend([])
     plt.xlabel('Number of echoes')
     plt.yticks(range(-5,16,5))
@@ -190,7 +192,7 @@ if __name__ == "__main__":
 
     plt.savefig('figures/separake_near_wall_mu_violin_plot.pdf')
 
-    ## Violin Plot
+    ## Box Plot
     sns.set(style="whitegrid", palette="pastel", color_codes=True)
     plt.figure()
 
@@ -215,7 +217,6 @@ if __name__ == "__main__":
 
     plt.savefig('figures/separake_near_wall_mu_box_plot.pdf')
 
-    '''
     ## Facetgrid
     sns.set(style="white", rc={"axes.facecolor": (0, 0, 0, 0)})
     pal = sns.cubehelix_palette(10, rot=-.25, light=.7)
@@ -240,7 +241,6 @@ if __name__ == "__main__":
     g.set_titles("")
     g.set(yticks=[])
     g.despine(bottom=True, left=True)
-    '''
 
 
     if plot_flag:
