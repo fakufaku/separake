@@ -52,10 +52,10 @@ parameters = dict(
     master_seed = 0xDEADBEEF,  # seed of the random number generator
     dist_src_mic = [2.5, 4], # Put all sources in donut
     min_dist_src_src = 1.,  # minimum distance between two sources
-    n_src_locations = 30,  # number of different source locations to consider
+    n_src_locations = 40,  # number of different source locations to consider
     n_epochs = 5,          # number of trials for each parameters combination
     # optimal gamma set empirically
-    gamma_opt = {'learn': 0.1, 'anechoic': 10., 0: 10., 1: 0.0001, 2:0., 3:0., 4:0, 5:0, 6:0., 7:0.}
+    gamma_opt = {'learn': 0.1, 'anechoic': 10., 0: 10., 1: 0.0001, 2:0., 3:0., 4:0, 5:0, 6:0., 7:0.},
 
     # convolutive separation parameters
     method = "mu",          # solving method: mu or em
