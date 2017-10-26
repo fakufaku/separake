@@ -47,21 +47,20 @@ parameters = dict(
                  [ 0.38952551,  0.67930326,  0.46717123],    # y-coordinates
                  [ 0.70000000,  0.70000000,  0.70000000] ],  # z-coordinates
 
-
     speech_files = ['data/Speech/SA1_32.wav', 'data/Speech/SX254_32.wav',],
 
     master_seed = 0xDEADBEEF,  # seed of the random number generator
     dist_src_mic = [2.5, 4], # Put all sources in donut
     min_dist_src_src = 1.,  # minimum distance between two sources
-    # n_src_locations = 25,  # number of different source locations to consider
-    n_src_locations = 2,  # number of different source locations to consider
-    n_epochs = 1,          # number of trials for each parameters combination
+    n_src_locations = 40,  # number of different source locations to consider
+    n_epochs = 5,          # number of trials for each parameters combination
+    # optimal gamma set empirically
+    gamma_opt = {'learn': 0.1, 'anechoic': 10., 0: 10., 1: 0.0001, 2:0., 3:0., 4:0, 5:0, 6:0., 7:0.},
 
     # convolutive separation parameters
     method = "em",          # solving method: mu or em
     dictionary_file = 'W_dictionary_em.npz',
-    # dictionary_file = 'W_dictionary_sqmag_mu.npz',
-    n_iter = 200,           # number of iterations of the solver algorithm
+    n_iter = 300,        # number of iterations of MU algorithm
     stft_win_len = 2048,    # supposedly optimal at 16 kHz (Ozerov and Fevote 2010)
     use_dict = True,
     n_latent_var = 4,    # number of latent variables (ignored when dictionary is used)
@@ -83,12 +82,10 @@ src_locs_ind = list(combinations(range(parameters['n_src_locations']), n_src))
 # 'learn': for learning the TF along the activations
 # 'anechoic': for anechoic conditions
 partial_lengths = ['anechoic','learn',0,1,2,3,4,5,6]
-partial_lengths = ['learn',0,1,2,3,4,5,6]
-# partial_lengths = ['learn']
 
 # only used with a dictionary, automatically set to zero otherwise
-l1_reg = [10000, 1000, 100, 10, 1., 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 0]
-l1_reg = [1]
+#l1_reg = [10000, 1000, 100, 10, 1., 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 0]
+l1_reg = ['opt_fixed']  # use the gamma_opt parameter defined above
 
 # seed to enforce same random intialization for all run of the algorithm
 # under different parameters
@@ -167,7 +164,8 @@ def parallel_loop(args):
         partial_rirs_sources = np.ones((n_channels, n_sources, n_bins))
         if method == 'em':
             freqvec = np.fft.rfftfreq(parameters['stft_win_len'], 1 / room.fs)
-            partial_rirs_sources = partial_rir(room, 0, freqvec)
+            partial_rirs_sources = np.swapaxes(
+                    partial_rirs[0][src_locs_ind,:,:], 0, 1)
     elif partial_length == 'learn':
         partial_rirs_sources = None
     elif partial_length >= 0:
@@ -194,11 +192,11 @@ def parallel_loop(args):
     else:
         raise ValueError('Unknown algorithm {} requested'.format(method))
 
-    #render sources
-    for j, s in enumerate(sep_sources):
-        # write the separated source to a wav file
-        out_filename = 'data/Speech/' + 'speech_source_' + str(j) + '_' + str(partial_length) + '_EM.wav'
-        wavfile.write(out_filename, room.fs, s)
+    # #render sources
+    # for j, s in enumerate(sep_sources):
+    #     # write the separated source to a wav file
+    #     out_filename = 'data/Speech/' + 'speech_source_' + str(j) + '_' + str(partial_length) + '_EM.wav'
+    #     wavfile.write(out_filename, room.fs, s)
 
     # compute the metrics
     n_samples = np.minimum(clean_sources.shape[2], sep_sources.shape[1])

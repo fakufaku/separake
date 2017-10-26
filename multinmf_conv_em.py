@@ -5,7 +5,7 @@ import pyroomacoustics as pra
 from multinmf_recons_im import multinmf_recons_im
 
 def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
-        SimAnneal_flag=1, Sigma_b_Upd_flag=False, update_a=True, update_w=True, update_h=True):
+        SimAnneal_flag=0, Sigma_b_Upd_flag=False, update_a=True, update_w=True, update_h=True):
 
     # [W,H,A,Sigma_b,S,log_like_arr] = ...
     #    multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num, SimAnneal_flag, Sigma_b_Upd_flag);
@@ -59,7 +59,12 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
 
     # some constants
     final_ann_noise_var = 3e-11
-    log_like_threshold = -2#1e-2
+    log_like_threshold = -1e-3#1e-2
+
+    # some variables
+    log_like_diff_prev3 = 0
+    log_like_diff_prev2 = 0
+    log_like_diff_prev = 0
 
     F, N, I = X.shape
     K = W0.shape[1]
@@ -171,9 +176,15 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
             log_like_diff = log_like - log_like_arr[iter-1]
             print('      Log-likelihood: {}\n      Log-likelihood improvement: {}'.format(log_like, log_like_diff))
             # if the increment of the log-likelihood is less, exit
-            if iter > 10 and\
-                (log_like_diff<0 and log_like_diff_prev<0):
-                break
+            if iter > 10:
+                if SimAnneal_flag>1 and\
+                (log_like_diff<0 and log_like_diff_prev<0 \
+                    and log_like_diff_prev2<0):
+                    break
+                elif SimAnneal_flag==0 and log_like_diff < log_like_threshold:
+                    break
+
+            log_like_diff_prev2 = log_like_diff_prev
             log_like_diff_prev = log_like_diff
         else:
             print('      Log-likelihood:', log_like)
