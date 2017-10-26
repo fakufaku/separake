@@ -242,7 +242,12 @@ def multinmf_conv_mu_wrapper(x, n_src, n_latent_var, stft_win_len, partial_rirs=
                 )
         fix_W = False
     else:
-        W_init = np.tile(W_dict, n_src)
+        if W_dict.shape[1] == n_latent_var:
+            W_init = np.tile(W_dict, n_src)
+        elif W_dict.shape[1] == n_src * n_latent_var:
+            W_init = W_dict
+        else:
+            raise ValueError('Mismatch between dictionary size and latent variables')
         fix_W = True
 
     W_init /= np.sum(W_init, axis=0)[None,:]
