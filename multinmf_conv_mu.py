@@ -250,8 +250,6 @@ def multinmf_conv_mu_wrapper(x, n_src, n_latent_var, stft_win_len, partial_rirs=
             raise ValueError('Mismatch between dictionary size and latent variables')
         fix_W = True
 
-    W_init /= np.sum(W_init, axis=0)[None,:]
-
     # follow average activations
     mix_act = np.mean(V, axis=(0,2))
     H_init = 0.5 * ( np.abs(np.random.randn(K,n_frame)) + np.ones((K,n_frame)) ) * mix_act[np.newaxis,:]
