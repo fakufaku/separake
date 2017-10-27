@@ -85,6 +85,8 @@ if __name__ == "__main__":
                 if record['partial_length'] == 'anechoic':
                     record['partial_length'] = -1
                 '''
+                if record['partial_length'] == -2:
+                    record['partial_length'] = 'learn'
                 if record['partial_length'] == -1:
                     record['partial_length'] = 'anechoic'
                 '''
@@ -104,15 +106,22 @@ if __name__ == "__main__":
         else:
             df = pd.concat([df, df_part], ignore_index=True)
 
-    label_index = [x for x in df.n_echoes.unique() if not isinstance(x, int)]
-    int_index = [x for x in df.n_echoes.unique() if isinstance(x, int)]
-    index = sorted(int_index) + label_index
+    index = np.sort(df.n_echoes.unique()).tolist()
+    index_str = [str(i) for i in index]
+    if -2 in index:
+        index_str[index.index(-2)] = 'learn'
+    if -1 in index:
+        index_str[index.index(-1)] = 'anechoic'
 
     # Draw the figure
     print('Plotting...')
 
     # Now plot the final figure, that should be much nicer and go in the paper
-    newdf = df.replace({'n_echoes': {-2:'learn', -1:'anechoic'}})
+    #newdf = df.replace({'n_echoes': {-2:'learn', -1:'anechoic'}})
+    newdf = df.replace({'n_echoes': dict(zip(index, index_str))})
+    mdf = newdf.melt(
+            id_vars=['n_echoes','Speaker gender'], 
+            value_vars=['SDR','SIR'], var_name='Metric')
 
     ## Violin Plot
     #sns.set(style="whitegrid", context="paper", palette="pastel", color_codes=True, font_scale=0.9)
@@ -122,83 +131,90 @@ if __name__ == "__main__":
                 'figure.figsize':(3.38649,3.338649), 
                 'lines.linewidth':1.,
                 'font.family': u'Roboto',
-                'font.sans-serif': [u'Roboto Light'],
+                'font.sans-serif': [u'Roboto Black'],
                 'text.usetex': False,
                 })
 
+    vps = (3.38649,3.338649)
 
-    plt.subplot(2,1,1)
-    g = sns.violinplot(data=newdf, x='n_echoes', y='SDR', hue='Speaker gender',
-            x_order=index, split=True, palette={'Male':'b', 'Female':'y'})
-    g.legend(loc=0, framealpha=0.4)
-    plt.xlabel('')
-    plt.xticks([])
-    plt.yticks(range(-5,16,5))
-    plt.ylim([-2.5, 14])
-    sns.despine(left=True)
+    g1 = sns.factorplot(x="n_echoes", y="value",
+        hue="Speaker gender", row="Metric",
+        data=mdf, kind="violin", split=True,
+        scale='area', palette={'Male':'b', 'Female':'r'},
+        order=index_str, sharey=False, legend=False,
+        size=vps[1] / 2, aspect=vps[0]/vps[1] * 2)
+    g1.set_titles('')
+    leg = g1.axes[0][0].legend(framealpha=0.6, frameon=True, loc='upper left')
+    leg.get_frame().set_linewidth(0)
+    ax1 = g1.axes.flat[0]
+    ax1.set_ylim([-2.5,7.5])
+    ax1.set_ylabel('SDR')
+    ax1.set_yticks([0., 2., 4., 6.])
+    ax2 = g1.axes.flat[1]
+    ax2.set_ylim([-2.5,13.5])
+    ax2.set_ylabel('SIR')
+    ax2.set_yticks([0., 3., 6., 9., 12.])
+    for ax in g1.axes[:,0]:
+        ax.get_yaxis().set_label_coords(-0.1,0.5)
 
-    plt.subplot(2,1,2)
-    sns.violinplot(data=newdf, x='n_echoes', y='SIR', hue='Speaker gender',
-            x_order=index, split=True, palette={'Male':'b', 'Female':'y'})
-    plt.legend([])
-    plt.xlabel('Number of echoes')
-    plt.yticks(range(-5,16,5))
-    plt.ylim([-2.5, 14])
     sns.despine(left=True)
 
     plt.tight_layout(pad=0.5)
 
     plt.savefig('figures/separake_near_wall_mu_violin_plot.pdf')
 
-    ## Box Plot
-    sns.set(style="whitegrid", palette="pastel", color_codes=True)
-    plt.figure()
-
-    plt.subplot(2,1,1)
-    g = sns.boxplot(data=newdf, x='n_echoes', y='SDR')
-    plt.legend(loc=0)
-    plt.xlabel('')
-    plt.xticks([])
-    plt.yticks(range(-5,16,5))
-    plt.ylim([-2.5, 14])
-    sns.despine(left=True)
-
-    plt.subplot(2,1,2)
-    sns.boxplot(data=newdf, x='n_echoes', y='SIR')
-    plt.legend([])
-    plt.xlabel('Number of echoes')
-    plt.yticks(range(-5,16,5))
-    plt.ylim([-2.5, 14])
-    sns.despine(left=True)
-
-    plt.tight_layout(pad=0.5)
-
-    plt.savefig('figures/separake_near_wall_mu_box_plot.pdf')
-
     ## Facetgrid
-    sns.set(style="white", rc={"axes.facecolor": (0, 0, 0, 0)})
-    pal = sns.cubehelix_palette(10, rot=-.25, light=.7)
+    sns.set(style='white', context='paper', palette='pastel', font_scale=0.9,
+            rc={
+                'axes.facecolor': (0, 0, 0, 0),
+                'figure.figsize':(3.38649,3.338649), 
+                'lines.linewidth':1.,
+                'font.family': u'Roboto',
+                'font.sans-serif': [u'Roboto Black'],
+                'text.usetex': False,
+                })
+    pal = sns.cubehelix_palette(len(index_str), rot=-.25, light=.7)
 
-    g = sns.FacetGrid(newdf, row="n_echoes", hue="n_echoes", aspect=15, size=.5, palette=pal, xlim=[-2.5, 10])
-    g.map(sns.kdeplot, "SDR", clip_on=False, shade=True, alpha=1, lw=0.1, bw=.2)
-    g.map(sns.kdeplot, "SDR", clip_on=False, color="w", lw=2, bw=.2)
-    g.map(plt.axhline, y=0, lw=2, clip_on=False)
+    g = sns.FacetGrid(mdf, row="n_echoes", col='Metric', hue="n_echoes", 
+            aspect= (vps[0])/(vps[1] / len(index_str)) / 2, size=vps[1]/len(index_str), 
+            palette=pal, row_order=index_str,
+            sharex=False, sharey=False)
+    g.map(sns.kdeplot, "value", clip_on=True, shade=True, alpha=1, lw=1, bw=.2)
+    g.map(sns.kdeplot, "value", clip_on=True, color="w", lw=0.2, bw=.2)
+    g.map(plt.axhline, y=0, lw=2, clip_on=True)
 
     # Define and use a simple function to label the plot in axes coordinates
     def label(x, color, label):
         ax = plt.gca()
-        ax.text(0, .2, label, fontweight="bold", color=color, 
-                ha="left", va="center", transform=ax.transAxes)
+        ax.text(1., .2, label, fontweight="bold", color=color, 
+                ha="right", va="center", transform=ax.transAxes)
 
-    g.map(label, "SDR")
+    g.map(label, 'n_echoes')
 
-    # Set the subplots to overlap
-    g.fig.subplots_adjust(hspace=-.25)
+    g.axes[-1,0].set_xlabel('SDR')
+    for ax in g.axes[:,0]:
+        ax.set_xlim([-2.,7.5])
+        ax.set_ylim([0, 0.8])
+    for ax in g.axes[:-1,0]:
+        ax.set_xticks([])
+    g.axes[-1,0].set_xticks([0., 2., 4., 6.])
+
+    g.axes[-1,1].set_xlabel('SIR')
+    for ax in g.axes[:,1]:
+        ax.set_xlim([-2.5,13.5])
+        ax.set_ylim([0, 0.5])
+    for ax in g.axes[:-1,1]:
+        ax.set_xticks([])
+    g.axes[-1,1].set_xticks([0., 3., 6., 9., 12.])
 
     # Remove axes details that don't play will with overlap
     g.set_titles("")
     g.set(yticks=[])
     g.despine(bottom=True, left=True)
+
+    plt.tight_layout()
+    # Set the subplots to overlap
+    g.fig.subplots_adjust(hspace=-.5)
 
 
     if plot_flag:
