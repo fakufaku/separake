@@ -5,7 +5,7 @@ import pyroomacoustics as pra
 from multinmf_recons_im import multinmf_recons_im
 
 def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
-        SimAnneal_flag=0, Sigma_b_Upd_flag=False, update_a=True, update_w=True, update_h=True):
+        SimAnneal_flag=0, Sigma_b_Upd_flag=False, update_a=True, update_w=True, update_h=True, verbose=False):
 
     # [W,H,A,Sigma_b,S,log_like_arr] = ...
     #    multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num, SimAnneal_flag, Sigma_b_Upd_flag);
@@ -70,7 +70,8 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
     K = W0.shape[1]
     J = len(source_NMF_ind)
 
-    print('Multichannel NMF dimension:', F, N, I, J, K)
+    if verbose:
+        print('Multichannel NMF dimension:', F, N, I, J, K)
 
     # if I != 2:
     #     raise ValueError('Multi_NMF_EM_conv: number of channels must be 2')
@@ -126,7 +127,8 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
 
     # MAIN LOOP
     for iter in range(iter_num):
-        print('EM iteration {} of {}:'.format(iter, iter_num))
+        if verbose:
+            print('EM iteration {} of {}:'.format(iter, iter_num))
 
         # store parameters estimated on previous iteration
         np.copyto(W_prev, W)
@@ -135,7 +137,8 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
         np.copyto(Sigma_b_prev, Sigma_b)
 
         # E-step: compute expectations of natural suffitient statistics
-        print('   - E-step')
+        if verbose:
+            print('   - E-step')
 
         # compute a priori source variances
         sigma_ss[:,] = 0
@@ -174,7 +177,9 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
 
         if iter > 1:
             log_like_diff = log_like - log_like_arr[iter-1]
-            print('      Log-likelihood: {}\n      Log-likelihood improvement: {}'.format(log_like, log_like_diff))
+            if verbose:
+                print('      Log-likelihood: {}\n      Log-likelihood improvement: {}'.format(log_like, log_like_diff))
+
             # if the increment of the log-likelihood is less, exit
             if iter > 10:
                 if SimAnneal_flag>1 and\
@@ -187,7 +192,8 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
             log_like_diff_prev2 = log_like_diff_prev
             log_like_diff_prev = log_like_diff
         else:
-            print('      Log-likelihood:', log_like)
+            if verbose:
+                print('      Log-likelihood:', log_like)
         log_like_arr[iter] = log_like
 
         for j in range(J):
@@ -243,11 +249,13 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
                             * sigma_cc_k
 
         # M-step: re-estimate
-        print('   - M-step')
+        if verbose:
+            print('   - M-step')
 
         # re-estimate A
         if update_a:
-            print("     - Update A")
+            if verbose:
+                print("     - Update A")
             for f in range(F):
                 A[f,:,:] = np.dot(bar_Rxs[f,:,:], np.linalg.inv(bar_Rss[f,:,:]))
 
@@ -265,10 +273,12 @@ def multinmf_conv_em(X, W0, H0, A0, Sigma_b0, source_NMF_ind, iter_num=100,
         # re-estimate W, and then H
         for k in range(K):
             if update_w:
-                if not k: print("     - Update W") # print just the first one
+                if not k and verbose: 
+                    print("     - Update W") # print just the first one
                 W[:, k] = np.sum(Vc[:,:,k] / np.outer(np.ones(F), H[k, :]), axis=1) / N
             if update_h:
-                if not k: print("     - Update H\n")
+                if not k and verbose:
+                    print("     - Update H\n")
                 H[k, :] = np.sum(Vc[:,:,k] / np.outer(W[:,k], np.ones(N)), axis=0) / F
 
         # Normalization of A
@@ -372,12 +382,13 @@ def multinmf_conv_em_wrapper(
 
     W_EM, H_EM, Ae_EM, Sigma_b_EM, Se_EM, log_like_arr = \
         multinmf_conv_em(X, W_init, H_init, A_init, Sigma_b_init, source_NMF_ind,
-            iter_num=n_iter, update_a=update_a, update_w=update_w, update_h=update_h)
+            iter_num=n_iter, update_a=update_a, update_w=update_w, update_h=update_h, verbose=verbose)
 
     Ae_EM = np.moveaxis(Ae_EM, [0], [2])
 
     # Computation of the spatial source images
-    print('Computation of the spatial source images\n')
+    if verbose:
+        print('Computation of the spatial source images\n')
     Ie_EM = np.zeros((n_bin,n_frame,n_src,n_chan), dtype=np.complex)
     for j in range(n_src):
         for f in range(n_bin):
