@@ -256,8 +256,8 @@ if __name__ == '__main__':
                 rc={
                     'figure.figsize': (1.5748, 1.29921),  # 40 x 33 mm
                     'lines.linewidth': 0.5,
-                    'font.family': u'Roboto',
-                    'font.sans-serif': [u'Roboto Thin'],
+                    #'font.family': u'Roboto',
+                    #'font.sans-serif': [u'Roboto Thin'],
                     'text.usetex': False,
                     })
         plt.figure()

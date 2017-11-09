@@ -61,6 +61,37 @@ Overview of results
 
 TBA
 
+Acknowledgement
+---------------
+
+Authors of \cite{ozerov2010multichannel} generously provide a MATLAB
+implementation of MU-NMF and EM-NMF methods for stereo separation. We ported
+this code to Python 3 and extended it arbitrary number of input channels. We
+think this implementation could be useful to the community and have released
+the code\footnote{\textcolor{red}{}Link will go here after review}}.
+
+First the original code was restricted to the 2-channel case, i.e.  $M = 2$.
+Thus, in order to embrace the specifics of our scenario and for sake of
+generalization, we extend it to the multi-channel case, that is $\forall M >
+1$.
+
+Secondly, the MU-NMF was modified to handle sparsity contraint as
+described in \ref{sec:mu}.
+
+Third, since EM method degenerates where
+zero-valued entries are present in the dictionary matrix, $\mD$, all these
+entries are initially set to a small constant value of \texttt{1e-6}.
+
+Finally, the code was further modified to deal with fixed dictionary and
+channel models matrices, which are normalized in order to avoid indeterminacy
+issues \cite{ozerov2010multichannel}. 
+
+Now to conclude with, no
+\textit{simulated annealing} strategies are not used in the final experiments.
+In fact in some preliminary and informal investigations we noticed that this
+yields to better results then using annealing. In the experiments, the number
+of iterations was set to $300$.
+
 Dependencies
 ------------
 

@@ -84,12 +84,7 @@ if __name__ == "__main__":
                     record['partial_length'] = -2
                 if record['partial_length'] == 'anechoic':
                     record['partial_length'] = -1
-                '''
-                if record['partial_length'] == -2:
-                    record['partial_length'] = 'learn'
-                if record['partial_length'] == -1:
-                    record['partial_length'] = 'anechoic'
-                '''
+
                 for src_index in range(len(record['sdr'])):
                     table.append(
                             [ record['partial_length'], record['seed'], src_ind_2_label[src_index], ]
@@ -116,6 +111,14 @@ if __name__ == "__main__":
     # Draw the figure
     print('Plotting...')
 
+    # get a basename for the plot
+    plot_basename = ('figures/' + cli_args.dirs[0].rstrip('/').split('/')[-1])
+
+    # compute median and save to pickle
+    df_median = df[['n_echoes','SDR','SIR']].groupby('n_echoes').median()
+    df_median.to_pickle(plot_basename + '_median.pickle')
+    df.to_pickle(plot_basename + '_dataframe.pickle')
+
     # Now plot the final figure, that should be much nicer and go in the paper
     #newdf = df.replace({'n_echoes': {-2:'learn', -1:'anechoic'}})
     newdf = df.replace({'n_echoes': dict(zip(index, index_str))})
@@ -126,12 +129,15 @@ if __name__ == "__main__":
     ## Violin Plot
     #sns.set(style="whitegrid", context="paper", palette="pastel", color_codes=True, font_scale=0.9)
     #plt.figure(figsize=(3.38649, 3.38649))
-    sns.set(style='whitegrid', context='paper', palette='pastel', font_scale=0.9,
+    sns.set(style='whitegrid', context='paper', 
+            #palette=sns.light_palette('navy', n_colors=2),
+            palette=sns.light_palette((210, 90, 60), input="husl", n_colors=2),
+            font_scale=0.9,
             rc={
                 'figure.figsize':(3.38649,3.338649), 
                 'lines.linewidth':1.,
-                'font.family': u'Roboto',
-                'font.sans-serif': [u'Roboto Black'],
+                #'font.family': u'Roboto',
+                #'font.sans-serif': [u'Roboto Bold'],
                 'text.usetex': False,
                 })
 
@@ -140,7 +146,7 @@ if __name__ == "__main__":
     g1 = sns.factorplot(x="n_echoes", y="value",
         hue="Speaker gender", row="Metric",
         data=mdf, kind="violin", split=True,
-        scale='area', palette={'Male':'b', 'Female':'r'},
+        scale='area', #palette={'Male':'b', 'Female':'r'},
         order=index_str, sharey=False, legend=False,
         size=vps[1] / 2, aspect=vps[0]/vps[1] * 2)
     g1.set_titles('')
@@ -156,21 +162,23 @@ if __name__ == "__main__":
     ax2.set_yticks([0., 3., 6., 9., 12.])
     for ax in g1.axes[:,0]:
         ax.get_yaxis().set_label_coords(-0.1,0.5)
+    g1.set_xlabels('Number of echoes')
 
     sns.despine(left=True)
 
     plt.tight_layout(pad=0.5)
 
-    plt.savefig('figures/separake_near_wall_mu_violin_plot.pdf')
+    plt.savefig(plot_basename + '_violin_plot.pdf')
 
     ## Facetgrid
+    '''
     sns.set(style='white', context='paper', palette='pastel', font_scale=0.9,
             rc={
                 'axes.facecolor': (0, 0, 0, 0),
                 'figure.figsize':(3.38649,3.338649), 
                 'lines.linewidth':1.,
                 'font.family': u'Roboto',
-                'font.sans-serif': [u'Roboto Black'],
+                'font.sans-serif': [u'Roboto Bold'],
                 'text.usetex': False,
                 })
     pal = sns.cubehelix_palette(len(index_str), rot=-.25, light=.7)
@@ -215,6 +223,7 @@ if __name__ == "__main__":
     plt.tight_layout()
     # Set the subplots to overlap
     g.fig.subplots_adjust(hspace=-.5)
+    '''
 
 
     if plot_flag:
