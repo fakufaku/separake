@@ -104,9 +104,9 @@ if __name__ == "__main__":
     index = np.sort(df.n_echoes.unique()).tolist()
     index_str = [str(i) for i in index]
     if -2 in index:
-        index_str[index.index(-2)] = 'learn'
+        index_str[index.index(-2)] = ' learn'
     if -1 in index:
-        index_str[index.index(-1)] = 'anechoic'
+        index_str[index.index(-1)] = 'anechoic  '
 
     # Draw the figure
     print('Plotting...')
@@ -129,33 +129,45 @@ if __name__ == "__main__":
     ## Violin Plot
     #sns.set(style="whitegrid", context="paper", palette="pastel", color_codes=True, font_scale=0.9)
     #plt.figure(figsize=(3.38649, 3.38649))
+    pal = sns.cubehelix_palette(7)
+    pal = sns.cubehelix_palette(8, start=.5, rot=-.75)
+    bicolor_pal = [pal[2], pal[5]]
     sns.set(style='whitegrid', context='paper', 
             #palette=sns.light_palette('navy', n_colors=2),
-            palette=sns.light_palette((210, 90, 60), input="husl", n_colors=2),
+            palette=bicolor_pal,
             font_scale=0.9,
             rc={
                 'figure.figsize':(3.38649,3.338649), 
-                'lines.linewidth':1.,
+                'lines.linewidth':0.5,
                 #'font.family': u'Roboto',
                 #'font.sans-serif': [u'Roboto Bold'],
-                'text.usetex': False,
-                })
+                #'text.usetex': False,
+                }
+            )
 
     vps = (3.38649,3.338649)
+
+    # reverse order or 'learn' and 'anechoic'
+    order_index = index_str.copy()
+    order_index[:2] = order_index[1::-1]
 
     g1 = sns.factorplot(x="n_echoes", y="value",
         hue="Speaker gender", row="Metric",
         data=mdf, kind="violin", split=True,
         scale='area', #palette={'Male':'b', 'Female':'r'},
-        order=index_str, sharey=False, legend=False,
+        order=order_index, sharey=False, legend=False,
         size=vps[1] / 2, aspect=vps[0]/vps[1] * 2)
+
     g1.set_titles('')
+
     leg = g1.axes[0][0].legend(framealpha=0.6, frameon=True, loc='upper left')
     leg.get_frame().set_linewidth(0)
+
     ax1 = g1.axes.flat[0]
     ax1.set_ylim([-2.5,7.5])
     ax1.set_ylabel('SDR')
     ax1.set_yticks([0., 2., 4., 6.])
+
     ax2 = g1.axes.flat[1]
     ax2.set_ylim([-2.5,13.5])
     ax2.set_ylabel('SIR')
