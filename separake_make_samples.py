@@ -206,7 +206,7 @@ if __name__ == '__main__':
         sep_sources = multinmf_conv_em_wrapper(
                 mic_signals, partial_rirs,
                 em_n_latent_var, n_iter=args.iter,
-                A_init=partial_rirs_sources, W_init=W_dict,
+                A_init=partial_rirs, W_init=W_dict,
                 update_a=False, update_w=False,
                 verbose=False)
     else:
