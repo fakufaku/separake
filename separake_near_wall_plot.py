@@ -17,7 +17,7 @@ if __name__ == "__main__":
     # parse arguments
     parser = argparse.ArgumentParser(
             description='Plot the data simulated by separake_near_wall')
-    parser.add_argument('-p', '--pickle', action='store_true', 
+    parser.add_argument('-p', '--pickle', action='store_true',
             help='Read the aggregated data table from a pickle cache')
     parser.add_argument('-s', '--show', action='store_true',
             help='Display the plots at the end of data analysis')
@@ -241,7 +241,5 @@ if __name__ == "__main__":
     g.fig.subplots_adjust(hspace=-.5)
     '''
 
-
     if plot_flag:
         plt.show()
-
