@@ -65,11 +65,10 @@ def get_gamma(n_echoes):
         raise ValueError('Negative number of echoes')
 
 # convolutive separation parameters
-dictionary_file = 'W_dictionary_sqmag_mu.npz'
+dict_files = { 'spkr' : 'W_dictionary_em.npz', 'univ' : 'W_dictionary_sqmag_mu.npz' }
 stft_win_len = 2048    # supposedly optimal at 16 kHz (Ozerov and Fevote 2010)
 use_dict = True
-mu_n_latent_var = 4    # number of latent variables (ignored when dictionary is used)
-em_n_latent_var = 4    # number of latent variables (ignored when dictionary is used)
+n_latent_var = 4    # number of latent variables (ignored when dictionary is used)
 base_dir = base_dir
 
 
@@ -79,23 +78,36 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Separake it!')
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('-l', '--learn', action='store_true', help='Learn the TF from the data')
-    group.add_argument('-a', '--anechoic', action='store_true', help='Anechoic conditions')
-    group.add_argument('-e', '--echoes', type=int, metavar='N', help='Use %(metavar)s echoes to form the TF')
-    parser.add_argument('-m', '--method', type=str, default='mu', choices=['mu','em'], help='The algorithm to use')
-    parser.add_argument('-p', '--play', action='store_true', help='Play the signals after separation')
-    parser.add_argument('-i', '--iter', type=int, default=200, help='Number of iterations of the algorithm')
-    parser.add_argument('-s', '--save', metavar='DIR', type=str, help='Save the audio files to %(metavar)s')
-    parser.add_argument('--mono', action='store_true', help='Only save the first channel')
-    parser.add_argument('--save_rir', type=str, metavar='DIR', help='Plot and save a typical RIR to %(metavar)s')
+    group.add_argument('-l', '--learn', action='store_true',
+            help='Learn the TF from the data')
+    group.add_argument('-a', '--anechoic', action='store_true',
+            help='Anechoic conditions')
+    group.add_argument('-e', '--echoes', type=int, metavar='N',
+            help='Use %(metavar)s echoes to form the TF')
+    parser.add_argument('-m', '--method', type=str, default='mu', choices=['mu','em'],
+            help='The algorithm to use')
+    parser.add_argument('-d', '--dict', type=str, default='spkr', choices=['spkr','univ'],
+            help='The dictionary to use speaker dependent (default), or universal')
+    parser.add_argument('-p', '--play', action='store_true', 
+            help='Play the signals after separation')
+    parser.add_argument('-i', '--iter', type=int, default=200,
+            help='Number of iterations of the algorithm')
+    parser.add_argument('-r', '--rng_seed', type=int, default=None,
+            help='The seed for the random number generator')
+    parser.add_argument('-s', '--save', metavar='DIR', type=str,
+            help='Save the audio files to %(metavar)s')
+    parser.add_argument('--mono', action='store_true',
+            help='Only save the first channel')
+    parser.add_argument('--save_rir', type=str, metavar='DIR',
+            help='Plot and save a typical RIR to %(metavar)s')
 
     args = parser.parse_args()
 
     # prepare the dictionary
     if use_dict:
-        W_dict = np.load(dictionary_file)['W_dictionary']
-        mu_n_latent_var = W_dict.shape[1]  # set by dictionary
-        print('Using dictionary with', mu_n_latent_var, 'latent variables')
+        W_dict = np.load(dict_files[args.dict])['W_dictionary']
+        n_latent_var = W_dict.shape[1]  # set by dictionary
+        print('Using dictionary with', n_latent_var, 'latent variables')
     else:
         W_dict = None
 
@@ -124,6 +136,10 @@ if __name__ == '__main__':
     for m in range(n_mics):
         room.add_source(mics_locs[:,m])
 
+    # set the RNG seed if needed
+    if args.rng_seed is not None:
+        np.random.seed(args.rng_seed)
+
     # generates sources in the room at random locations
     # but ensure they are too close to microphones
     bbox = np.array(
@@ -151,6 +167,8 @@ if __name__ == '__main__':
 
         if select:
             sources_locs = np.concatenate([sources_locs, new_source], axis=1)
+
+    print('Source distances', np.linalg.norm(sources_locs[:,0] - sources_locs[:,1]))
 
     source_array = pra.MicrophoneArray(sources_locs, fs)
     room.add_microphone_array(source_array)
@@ -197,18 +215,18 @@ if __name__ == '__main__':
     if args.method == 'mu':
         # separate using MU
         sep_sources = multinmf_conv_mu_wrapper(
-                mic_signals, n_speech, mu_n_latent_var, stft_win_len,
+                mic_signals, n_speech, n_latent_var, stft_win_len,
                 partial_rirs=partial_rirs,
                 W_dict=W_dict, l1_reg=gamma,
                 n_iter=args.iter, verbose=True)
     elif args.method == 'em':
         # separate using EM
         sep_sources = multinmf_conv_em_wrapper(
-                mic_signals, partial_rirs,
-                em_n_latent_var, n_iter=args.iter,
+                mic_signals, n_speech, stft_win_len,
+                n_latent_var, n_iter=args.iter,
                 A_init=partial_rirs, W_init=W_dict,
                 update_a=False, update_w=False,
-                verbose=False)
+                verbose=True)
     else:
         raise ValueError('Unknown algorithm {} requested'.format(method))
 
@@ -241,11 +259,20 @@ if __name__ == '__main__':
             save_mix = mic_signals
             save_sep = sep_sources
 
+        if args.learn:
+            scenario = 'learn'
+        elif args.anechoic:
+            scenario = 'anechoic'
+        else:
+            scenario = '{}echoes'.format(args.echoes)
+
+        description = '{}_{}_{}'.format(scenario, args.method, args.dict)
+
         bnames = [os.path.splitext(os.path.basename(name))[0] for name in speech_files]
-        filename = args.save + '/separake_{}_mix_'.format(args.method) + '_'.join(bnames) + '.wav'
+        filename = args.save + '/separake_{}_mix_'.format(description) + '_'.join(bnames) + '.wav'
         wavfile.write(filename, fs, save_mix)
         for i, name in enumerate(bnames):
-            filename = args.save + '/separake_{}_sep_'.format(args.method) + name + '.wav'
+            filename = args.save + '/separake_{}_sep_'.format(description) + name + '.wav'
             wavfile.write(filename, fs, save_sep[i])
 
     if args.save_rir is not None:
